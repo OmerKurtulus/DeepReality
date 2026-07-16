@@ -1,0 +1,30 @@
+{
+  "_name_or_path": "google/siglip2-base-patch16-224",
+  "architectures": [
+    "SiglipForImageClassification"
+  ],
+  "id2label": {
+    "0": "AI",
+    "1": "Deepfake",
+    "2": "Real"
+  },
+  "initializer_factor": 1.0,
+  "label2id": {
+    "AI": 0,
+    "Deepfake": 1,
+    "Real": 2
+  },
+  "model_type": "siglip",
+  "problem_type": "single_label_classification",
+  "text_config": {
+    "model_type": "siglip_text_model",
+    "torch_dtype": "float32",
+    "vocab_size": 256000
+  },
+  "torch_dtype": "float32",
+  "transformers_version": "4.50.0.dev0",
+  "vision_config": {
+    "model_type": "siglip_vision_model",
+    "torch_dtype": "float32"
+  }
+}

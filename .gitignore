@@ -1,0 +1,30 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+venv/
+.env
+
+# ── İşletim sistemi / editör ──
+.DS_Store
+.vscode/
+.idea/
+.claude/
+
+# ── Büyük model ağırlıkları ──
+# GitHub dosya limiti (100 MB) nedeniyle repoda tutulmuyor.
+# İndirme bağlantıları ve kurulum talimatı: models/README.md
+models/*.pt
+models/pin_b4_ai_deepfake_real/model.safetensors
+
+# ── Test görselleri ve analiz çıktıları ──
+# Kişisel fotoğraflar içerdiği için repoya dahil edilmez.
+# Klasör yapısı .gitkeep ile korunur.
+input/*
+!input/.gitkeep
+outputs/*
+!outputs/.gitkeep
+
+# ── Proje dışı dosyalar ──
+index.html
