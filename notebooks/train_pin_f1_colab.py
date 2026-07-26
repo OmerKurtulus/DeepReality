@@ -25,12 +25,19 @@
 REPO_URL      = "https://github.com/OmerKurtulus/DeepReality.git"  # <-- EDIT
 REPO_BRANCH   = "main"
 
-N_TRAIN       = 1600   # balanced samples from the training corpus
-N_HOLDOUT     = 400    # balanced samples from a DIFFERENT corpus
-RESUME        = True   # reuse an existing feature checkpoint if present
+RUN_TAG       = "v2"   # checkpoints are namespaced by this; bump it to start clean
+
+N_TRAIN       = 800    # balanced samples from the training corpus
+N_HOLDOUT     = 300    # balanced samples from a DIFFERENT corpus
+RESUME        = True   # continue from a checkpoint carrying the same RUN_TAG
+
+PROFILE_FIRST = 3      # print per-pin timings for the first N images
+MAX_WORKERS   = 4      # concurrent pins; see the note in section 1
+TORCH_THREADS = 2      # intra-op threads per PyTorch call
 
 TRAIN_DATASET = "Hemg/deepfake-and-real-images"      # 0=Fake, 1=Real
-HOLDOUT_DATASET = "ComplexDataLab/OpenFake"          # labels: "real"/"fake"
+HOLDOUT_DATASET = "ComplexDataLab/OpenFake"
+HOLDOUT_CONFIG  = "core"                             # this corpus requires a config
 
 DRIVE_ROOT    = "/content/drive/MyDrive/DeepReality"
 
@@ -59,6 +66,17 @@ if torch.cuda.is_available():
         print("  TF32   : enabled")
 else:
     print("  WARNING: no GPU. Feature extraction will be very slow.")
+
+# Thread budget. The orchestrator runs several pins concurrently and each
+# PyTorch call spawns its own intra-op pool; left at their defaults these
+# multiply into far more OS threads than there are cores, and the
+# resulting contention costs more than the concurrency gains. The image
+# processors in particular do their resizing and normalisation on the CPU.
+import multiprocessing
+torch.set_num_threads(TORCH_THREADS)
+os.environ["OMP_NUM_THREADS"] = str(TORCH_THREADS)
+print(f"  vCPU   : {multiprocessing.cpu_count()}   "
+      f"torch threads: {TORCH_THREADS}   pin workers: {MAX_WORKERS}")
 
 # ----------------------------------------------------------------------------
 hdr("2 · DRIVE + REPOSITORY")
@@ -188,10 +206,12 @@ train_rows = take_balanced(
 try:
     holdout_rows = take_balanced(
         HOLDOUT_DATASET, N_HOLDOUT, "label",
-        lambda v: 1 if str(v).lower() == "fake" else 0,
-        split="test")
+        lambda v: 1 if str(v).lower() in ("fake", "1", "true") else 0,
+        split="test", cfg=HOLDOUT_CONFIG)
 except Exception as e:
-    print(f"  Holdout corpus unavailable ({e}); falling back to a split of train")
+    print(f"  Holdout corpus unavailable ({type(e).__name__}: {e})")
+    print("  Continuing without a cross-dataset holdout; the calibration")
+    print("  split still provides an in-distribution estimate.")
     holdout_rows = []
 
 # ----------------------------------------------------------------------------
@@ -218,7 +238,7 @@ from transformers import (CLIPModel, CLIPProcessor, AutoModel, AutoProcessor,
 
 def build_feature_pipeline():
     """Layers 1, 2 and 4 only — E1 needs an API key, F1 is what we are fitting."""
-    p = PinPipeline(max_workers=8)
+    p = PinPipeline(max_workers=MAX_WORKERS)
     for pin in (PinA1Metadata(), PinA2C2pa(), PinA3Ela(), PinA4Face(),
                 PinB1Clip(), PinB2Siglip(), PinB3Freq(), PinB4IndependentCore()):
         p.add_pin(pin)
@@ -230,36 +250,68 @@ import pandas as pd
 WORK = "/content/_work"; os.makedirs(WORK, exist_ok=True)
 
 def extract(rows, tag):
-    ckpt = os.path.join(ART_DIR, f"f1_features_{tag}.parquet")
+    """
+    Run the pipeline over a corpus and assemble the design matrix.
+
+    Checkpoints are namespaced by RUN_TAG so a re-run never collides with
+    the artefacts of an earlier one, and resume is by row count: the
+    streaming order is deterministic for a fixed dataset, so skipping the
+    first N rows reproduces exactly the samples already processed.
+    """
+    ckpt = os.path.join(ART_DIR, f"f1_features_{RUN_TAG}_{tag}.parquet")
+
+    records, start = [], 0
     if RESUME and os.path.exists(ckpt):
-        df = pd.read_parquet(ckpt)
-        if len(df) >= len(rows):
-            print(f"  [{tag}] checkpoint reused: {len(df)} rows")
-            return df
+        prior = pd.read_parquet(ckpt)
+        if len(prior) >= len(rows):
+            print(f"  [{tag}] checkpoint complete: {len(prior)} rows — reused")
+            return prior
+        records = prior.to_dict("records")
+        start = len(records)
+        print(f"  [{tag}] resuming from checkpoint at {start}/{len(rows)}")
 
     pipeline = build_feature_pipeline()
-    records, t0 = [], time.time()
-    for i, (raw, y) in enumerate(rows, 1):
-        path = os.path.join(WORK, f"{tag}_{i:06d}")
+    t0 = time.time()
+
+    for i in range(start, len(rows)):
+        raw, y = rows[i]
+        n = i + 1
+        path = os.path.join(WORK, f"{tag}_{n:06d}")
         try:
             with open(path, "wb") as fh:
                 fh.write(raw)
-            run = pipeline.run(path)
+
+            if n - start <= PROFILE_FIRST:
+                # Instrument the opening images so a throughput problem is
+                # attributed to a specific pin within seconds rather than
+                # inferred from the aggregate rate an hour later.
+                timings = {}
+                run = pipeline.run(
+                    path,
+                    on_pin_complete=lambda pid, res, dt: timings.__setitem__(pid, dt),
+                )
+                slowest = sorted(timings.items(), key=lambda kv: -kv[1])
+                print(f"  [profile {n}] total {run.total_time:.2f}s  |  " +
+                      "  ".join(f"{p}:{d:.2f}s" for p, d in slowest[:6]), flush=True)
+            else:
+                run = pipeline.run(path)
+
             feats = extract_features(run.results)
             feats["__label__"] = y
             records.append(feats)
         except Exception as exc:
-            print(f"    skip {i}: {type(exc).__name__}: {exc}")
+            print(f"    skip {n}: {type(exc).__name__}: {exc}")
         finally:
             if os.path.exists(path):
                 os.remove(path)
 
-        if i % 25 == 0 or i == len(rows):
+        done = n - start
+        if done % 25 == 0 or n == len(rows):
             el = time.time() - t0
-            eta = el / i * (len(rows) - i)
-            print(f"  [{tag}] {i}/{len(rows)}  {el/i:.2f} s/img  ETA {eta/60:.1f} min",
-                  flush=True)
-        if i % 200 == 0:                      # survive a disconnect
+            rate = el / max(done, 1)
+            print(f"  [{tag}] {n}/{len(rows)}  {rate:.2f} s/img  "
+                  f"ETA {rate * (len(rows) - n) / 60:.1f} min", flush=True)
+        if done % 100 == 0:                   # survive a disconnect
             pd.DataFrame(records).to_parquet(ckpt, index=False)
 
     df = pd.DataFrame(records)

@@ -33,6 +33,7 @@ import numpy as np
 from pathlib import Path
 import os
 import logging
+import threading
 import warnings
 import urllib.request
 
@@ -134,6 +135,10 @@ class PinA4Face(BasePin):
             self._api_mode = "tasks"
         elif SOLUTIONS_API_AVAILABLE:
             self._api_mode = "solutions"
+
+        # Detector instance, built lazily and reused across images
+        self._tasks_detector = None
+        self._detector_lock = threading.Lock()
 
     # ═══════════════════════════════════════════════════════════
     # MAIN ANALYSIS
@@ -335,6 +340,33 @@ class PinA4Face(BasePin):
     # FACE DETECTION — TASKS API (MediaPipe >= 0.10.8)
     # ═══════════════════════════════════════════════════════════
 
+    def _get_tasks_detector(self, model_path):
+        """
+        Return the cached MediaPipe FaceDetector, constructing it once.
+
+        Detector construction loads the TFLite model and builds an
+        inference graph. Doing that per image is orders of magnitude more
+        expensive than the detection, so the instance is retained for the
+        lifetime of the pin. It is guarded by a lock because the
+        orchestrator may invoke pins from several threads.
+        """
+        if self._tasks_detector is not None:
+            return self._tasks_detector
+
+        with self._detector_lock:
+            if self._tasks_detector is None:
+                base_options = mp_tasks_python.BaseOptions(
+                    model_asset_path=str(model_path)
+                )
+                options = mp_tasks_vision.FaceDetectorOptions(
+                    base_options=base_options,
+                    min_detection_confidence=self.min_confidence
+                )
+                self._tasks_detector = (
+                    mp_tasks_vision.FaceDetector.create_from_options(options)
+                )
+        return self._tasks_detector
+
     def _detect_faces_tasks(self, image_bgr: np.ndarray) -> list[dict]:
         """
         Face detection through the modern MediaPipe Tasks API.
@@ -348,23 +380,20 @@ class PinA4Face(BasePin):
         h, w = image_bgr.shape[:2]
 
         try:
-            base_options = mp_tasks_python.BaseOptions(
-                model_asset_path=str(model_path)
-            )
-            options = mp_tasks_vision.FaceDetectorOptions(
-                base_options=base_options,
-                min_detection_confidence=self.min_confidence
-            )
+            # The detector is built once and retained. Constructing it
+            # loads the TFLite model and builds the inference graph, which
+            # costs far more than the detection itself; rebuilding it per
+            # image dominated batch runtime before this was cached.
+            detector = self._get_tasks_detector(model_path)
+            if detector is None:
+                return []
 
-            with mp_tasks_vision.FaceDetector.create_from_options(
-                options
-            ) as detector:
-                image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-                mp_image = mp.Image(
-                    image_format=mp.ImageFormat.SRGB,
-                    data=image_rgb
-                )
-                result = detector.detect(mp_image)
+            image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(
+                image_format=mp.ImageFormat.SRGB,
+                data=image_rgb
+            )
+            result = detector.detect(mp_image)
 
             detections = []
             if result.detections:
