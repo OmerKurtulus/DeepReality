@@ -16,7 +16,7 @@
 #  Output, written to MyDrive/DeepReality/artifacts/ :
 #      pin_f1_xgboost.json     -> copy into your local models/
 #      pin_f1_metadata.json    -> copy into your local models/
-#      f1_features.parquet     -> the extracted design matrix, for reuse
+#      f1_features_<tag>_*.parquet -> the extracted design matrix, for reuse
 # =============================================================================
 
 # ----------------------------------------------------------------------------
@@ -25,15 +25,14 @@
 REPO_URL      = "https://github.com/OmerKurtulus/DeepReality.git"  # <-- EDIT
 REPO_BRANCH   = "main"
 
-RUN_TAG       = "v2"   # checkpoints are namespaced by this; bump it to start clean
+RUN_TAG       = "v3"   # checkpoints are namespaced by this; bump it to start clean
 
-N_TRAIN       = 800    # balanced samples from the training corpus
-N_HOLDOUT     = 300    # balanced samples from a DIFFERENT corpus
+N_TRAIN       = 3000   # balanced samples from the training corpus
+N_HOLDOUT     = 800    # balanced samples from a DIFFERENT corpus
 RESUME        = True   # continue from a checkpoint carrying the same RUN_TAG
 
 PROFILE_FIRST = 3      # print per-pin timings for the first N images
-MAX_WORKERS   = 4      # concurrent pins; see the note in section 1
-TORCH_THREADS = 2      # intra-op threads per PyTorch call
+TORCH_THREADS = 4      # intra-op threads per PyTorch call
 
 TRAIN_DATASET = "Hemg/deepfake-and-real-images"      # 0=Fake, 1=Real
 HOLDOUT_DATASET = "ComplexDataLab/OpenFake"
@@ -67,16 +66,13 @@ if torch.cuda.is_available():
 else:
     print("  WARNING: no GPU. Feature extraction will be very slow.")
 
-# Thread budget. The orchestrator runs several pins concurrently and each
-# PyTorch call spawns its own intra-op pool; left at their defaults these
-# multiply into far more OS threads than there are cores, and the
-# resulting contention costs more than the concurrency gains. The image
-# processors in particular do their resizing and normalisation on the CPU.
+# Thread budget. Extraction is single-threaded across pins (see section 5),
+# so each PyTorch call may use a few intra-op threads without contending
+# with a concurrent pin for the same cores.
 import multiprocessing
 torch.set_num_threads(TORCH_THREADS)
 os.environ["OMP_NUM_THREADS"] = str(TORCH_THREADS)
-print(f"  vCPU   : {multiprocessing.cpu_count()}   "
-      f"torch threads: {TORCH_THREADS}   pin workers: {MAX_WORKERS}")
+print(f"  vCPU   : {multiprocessing.cpu_count()}   torch threads: {TORCH_THREADS}")
 
 # ----------------------------------------------------------------------------
 hdr("2 · DRIVE + REPOSITORY")
@@ -236,15 +232,77 @@ from layer6_ensemble.feature_extractor import (
 from transformers import (CLIPModel, CLIPProcessor, AutoModel, AutoProcessor,
                           AutoImageProcessor, SiglipForImageClassification)
 
-def build_feature_pipeline():
-    """Layers 1, 2 and 4 only — E1 needs an API key, F1 is what we are fitting."""
-    p = PinPipeline(max_workers=MAX_WORKERS)
-    for pin in (PinA1Metadata(), PinA2C2pa(), PinA3Ela(), PinA4Face(),
-                PinB1Clip(), PinB2Siglip(), PinB3Freq(), PinB4IndependentCore()):
-        p.add_pin(pin)
-    p.add_pin(PinD1GradCam(), depends_on=["PIN-B1", "PIN-B2", "PIN-B3"])
-    p.add_pin(PinD2AnomalyLocalization(), depends_on=["PIN-A3", "PIN-B3", "PIN-D1"])
-    return p
+# ---------------------------------------------------------------------------
+# Batch mode differs from interactive mode in two ways that matter here.
+#
+# 1. SEQUENTIAL, NOT CONCURRENT. The orchestrator's thread pool exists to cut
+#    latency on a single large image, where each detector spends seconds in
+#    the model and parallelism pays for its coordination. On 256 px corpus
+#    images the model work collapses to milliseconds — measured on an A100:
+#    B1 16.8 ms, B2 13.2 ms, B3 6.0 ms, D1 76.7 ms, roughly 113 ms in total —
+#    and the thread coordination then dominates completely, inflating the
+#    same work to about 16 s per image. Running the pins in dependency order
+#    on one thread is therefore two orders of magnitude faster for this
+#    workload. The results are identical; only the schedule changes.
+#
+# 2. NO ARTEFACT PERSISTENCE. Each pin normally writes its JSON envelope, and
+#    the imaging pins write heatmaps, crops and overlays. Across a thousand
+#    images that is tens of thousands of files nobody reads: only the feature
+#    vector is wanted. Persistence is therefore suppressed for the extraction.
+# ---------------------------------------------------------------------------
+
+from core.base_pin import BasePin
+from config.settings import ELA_CONFIG
+
+def suppress_artefacts():
+    """Disable per-image file output for the duration of the extraction."""
+    BasePin._save_output = lambda self, output, file_stem: None
+    ELA_CONFIG["save_heatmap"] = False
+    PinD1GradCam._save_overlay = (
+        lambda self, image_bgr, cam_full, file_stem, tag: ""
+    )
+    PinA4Face._save_face_crop = getattr(PinA4Face, "_save_face_crop", None)
+
+suppress_artefacts()
+
+class SequentialExtractor:
+    """
+    Runs the ten feature pins in dependency order on a single thread.
+
+    The order below is a topological sort of the same graph the orchestrator
+    builds, so every pin still receives exactly the context it declares.
+    """
+
+    def __init__(self):
+        self.a1, self.a2 = PinA1Metadata(), PinA2C2pa()
+        self.a3, self.a4 = PinA3Ela(), PinA4Face()
+        self.b1, self.b2 = PinB1Clip(), PinB2Siglip()
+        self.b3, self.b4 = PinB3Freq(), PinB4IndependentCore()
+        self.d1, self.d2 = PinD1GradCam(), PinD2AnomalyLocalization()
+
+    def run(self, path):
+        r = {}
+        timings = {}
+        for pin in (self.a1, self.a2, self.a3, self.a4,
+                    self.b1, self.b2, self.b3, self.b4):
+            t = time.perf_counter()
+            r[pin.pin_id] = pin.run(path)
+            timings[pin.pin_id] = time.perf_counter() - t
+
+        t = time.perf_counter()
+        r["PIN-D1"] = self.d1.run(path, context={
+            "PIN-B1": r["PIN-B1"], "PIN-B2": r["PIN-B2"], "PIN-B3": r["PIN-B3"],
+            "_pins": {},
+        })
+        timings["PIN-D1"] = time.perf_counter() - t
+
+        t = time.perf_counter()
+        r["PIN-D2"] = self.d2.run(path, context={
+            "PIN-A3": r["PIN-A3"], "PIN-B3": r["PIN-B3"], "PIN-D1": r["PIN-D1"],
+            "_pins": {"PIN-D1": self.d1},
+        })
+        timings["PIN-D2"] = time.perf_counter() - t
+        return r, timings
 
 import pandas as pd
 WORK = "/content/_work"; os.makedirs(WORK, exist_ok=True)
@@ -270,7 +328,7 @@ def extract(rows, tag):
         start = len(records)
         print(f"  [{tag}] resuming from checkpoint at {start}/{len(rows)}")
 
-    pipeline = build_feature_pipeline()
+    extractor = SequentialExtractor()
     t0 = time.time()
 
     for i in range(start, len(rows)):
@@ -281,22 +339,20 @@ def extract(rows, tag):
             with open(path, "wb") as fh:
                 fh.write(raw)
 
+            t_img = time.perf_counter()
+            results, timings = extractor.run(path)
+            elapsed = time.perf_counter() - t_img
+
             if n - start <= PROFILE_FIRST:
                 # Instrument the opening images so a throughput problem is
                 # attributed to a specific pin within seconds rather than
                 # inferred from the aggregate rate an hour later.
-                timings = {}
-                run = pipeline.run(
-                    path,
-                    on_pin_complete=lambda pid, res, dt: timings.__setitem__(pid, dt),
-                )
                 slowest = sorted(timings.items(), key=lambda kv: -kv[1])
-                print(f"  [profile {n}] total {run.total_time:.2f}s  |  " +
-                      "  ".join(f"{p}:{d:.2f}s" for p, d in slowest[:6]), flush=True)
-            else:
-                run = pipeline.run(path)
+                print(f"  [profile {n}] total {elapsed*1000:.0f} ms  |  " +
+                      "  ".join(f"{p}:{d*1000:.0f}ms" for p, d in slowest[:6]),
+                      flush=True)
 
-            feats = extract_features(run.results)
+            feats = extract_features(results)
             feats["__label__"] = y
             records.append(feats)
         except Exception as exc:
@@ -309,8 +365,9 @@ def extract(rows, tag):
         if done % 25 == 0 or n == len(rows):
             el = time.time() - t0
             rate = el / max(done, 1)
-            print(f"  [{tag}] {n}/{len(rows)}  {rate:.2f} s/img  "
-                  f"ETA {rate * (len(rows) - n) / 60:.1f} min", flush=True)
+            remaining = rate * (len(rows) - n)
+            print(f"  [{tag}] {n}/{len(rows)}  {rate*1000:.0f} ms/img  "
+                  f"ETA {remaining/60:.1f} min", flush=True)
         if done % 100 == 0:                   # survive a disconnect
             pd.DataFrame(records).to_parquet(ckpt, index=False)
 
