@@ -86,11 +86,21 @@ producer declares the asset synthetic.
 (OpenAI, Google, Adobe Firefly, Midjourney, Microsoft Designer).
   - `signature_valid` — cryptographic integrity of the manifest.
 Note that PIN-A1 also performs a heuristic byte-level scan for C2PA \
-markers. That scan corroborates but never overrides PIN-A2, which \
-performs the authoritative parse. Where PIN-A1 reports markers and \
-PIN-A2 reports no manifest, the container likely holds provenance data \
-the parser could not validate — treat as moderate, not decisive, \
-evidence and say so.
+markers, reported as `c2pa_binary_markers`. Where PIN-A1 reports \
+markers but PIN-A2 reports no parseable manifest, the container holds \
+provenance data the reference parser could not validate — a common \
+outcome with newer specification versions and with C2PA embedded in \
+PNG. Weigh that case by WHAT the markers contain:
+  - If the marker list includes an explicit IPTC source type — \
+`trainedAlgorithmicMedia`, `algorithmicMedia` or \
+`compositeWithTrainedAlgorithmicMedia` — that literal string is the \
+producer's own declaration of synthesis. Treat it as TIER 1 evidence \
+with confidence reduced to 0.85-0.90 to reflect the unverified \
+signature, and state that the signature could not be validated.
+  - If the markers are only generic container tags (`jumb`, `c2pa`, \
+`caBX`, `c2pa.actions`) with no source type, they establish that a \
+C2PA-aware tool touched the file but not that it was synthesised. \
+Treat that as moderate evidence only.
 
 PIN-A3 (Error Level Analysis). Recompresses the image at a known JPEG \
 quality and measures per-region divergence from the original. Regions \
@@ -185,6 +195,22 @@ this; it merely indicates the generator is visually convincing, which \
 is worth stating.
   - Explicit generator signature in metadata (PIN-A1 \
 `ai_tool_signature`) → equivalent standing.
+  - Unvalidated IPTC source-type marker in `c2pa_binary_markers`, per \
+the PIN-A1 note above → same standing, confidence 0.85-0.90.
+
+TIER 1 ALSO DETERMINES THE TAXONOMY. The declared source type states \
+how the asset was made, and therefore selects the verdict label \
+directly:
+  - `trainedAlgorithmicMedia` / `algorithmicMedia` → AI_GENERATED. The \
+asset was synthesised outright.
+  - `compositeWithTrainedAlgorithmicMedia` → DEEPFAKE. Authentic \
+content was altered generatively.
+A declared source type OVERRIDES PIN-B4's class opinion. B4 is a \
+classifier inferring the category from appearance; the manifest states \
+it. B4 in particular tends to label photorealistic synthetic faces as \
+"Deepfake" because they resemble face-manipulation training examples, \
+so do not let it reclassify an asset the producer declared to be \
+wholly generated.
   - Valid C2PA manifest asserting camera capture with no AI actions and \
 no editing history → strong authenticity evidence, confidence \
 0.85-0.93.
@@ -262,8 +288,10 @@ proportionally to the evidential weight of what is missing.
 
 Apply in order and stop at the first rule that resolves the case.
 
-R1. Tier 1 AI provenance present → AI_GENERATED. Detector agreement \
-raises confidence; detector dissent does not overturn the verdict.
+R1. Tier 1 AI provenance present → verdict taken from the declared \
+source type (AI_GENERATED, or DEEPFAKE for a composite type). Detector \
+agreement raises confidence; detector dissent does not overturn the \
+verdict, and PIN-B4's class opinion does not override the declaration.
 
 R2. Tier 1 authentic-capture provenance present, no AI indicators → \
 AUTHENTIC.
@@ -276,8 +304,8 @@ content) and PIN-D2 reports fused regions, the manipulation hypothesis \
 survives: DEEPFAKE with moderate confidence.
 
 R4. No Tier 1 or Tier 2 evidence → decide on Tier 3 consensus, \
-qualified by Tier 4. Use PIN-B4's class distribution to choose between \
-AI_GENERATED and DEEPFAKE.
+qualified by Tier 4. Only here, where no source type was declared, does \
+PIN-B4's class distribution choose between AI_GENERATED and DEEPFAKE.
 
 R5. Detector spread > 0.40 with no provenance evidence → SUSPICIOUS, \
 confidence ≤ 0.60, and state which detectors disagree.

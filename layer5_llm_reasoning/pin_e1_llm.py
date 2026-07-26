@@ -104,6 +104,12 @@ class PinE1LLMReasoning(BasePin):
         counterproductive, so known deviations are repaired and
         recorded.
         """
+        if not isinstance(payload, dict):
+            raise LLMError(
+                f"Adjudication payload was {type(payload).__name__}, "
+                f"expected an object"
+            )
+
         verdict = str(payload.get("verdict", "")).strip().upper().replace(" ", "_")
 
         aliases = {
@@ -395,19 +401,25 @@ class PinE1LLMReasoning(BasePin):
         else:
             try:
                 response = complete(system_prompt, user_prompt)
-                adjudication = self._normalise_response(response["content"])
                 usage = response.get("usage", {})
                 model_name = response.get("model", model_name)
                 latency = response.get("latency_seconds")
+                # Persist before validation: a response that fails to
+                # normalise is precisely the one worth inspecting.
                 transcript_path = self._save_transcript(
                     file_stem, system_prompt, user_prompt, response["content"]
                 )
+                adjudication = self._normalise_response(response["content"])
             except LLMNotConfiguredError as exc:
                 self.errors.append(str(exc))
                 adjudication = self._build_fallback_result(digest, str(exc))
                 reasoning_mode = "rule_based_fallback"
             except LLMError as exc:
                 self.errors.append(str(exc))
+                adjudication = self._build_fallback_result(digest, str(exc))
+                reasoning_mode = "rule_based_fallback"
+            except Exception as exc:  # noqa: BLE001 — must never fail closed
+                self.errors.append(f"Unexpected adjudication failure: {exc}")
                 adjudication = self._build_fallback_result(digest, str(exc))
                 reasoning_mode = "rule_based_fallback"
 

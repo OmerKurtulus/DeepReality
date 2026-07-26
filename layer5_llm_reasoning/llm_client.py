@@ -50,38 +50,67 @@ def is_configured() -> bool:
     return get_api_key() is not None
 
 
+def _coerce_to_object(parsed):
+    """
+    Reduce a parsed JSON value to the single object the protocol expects.
+
+    Some models wrap the required object in an array, or nest it under a
+    single wrapper key such as {"result": {...}}. Both are recoverable
+    and common enough that rejecting them would discard sound
+    adjudications over presentation alone.
+    """
+    if isinstance(parsed, dict):
+        # Unwrap a lone container key that holds the real payload
+        if len(parsed) == 1:
+            (only_value,) = parsed.values()
+            if isinstance(only_value, dict) and "verdict" in only_value:
+                return only_value
+        return parsed
+
+    if isinstance(parsed, list):
+        for item in parsed:
+            if isinstance(item, dict):
+                return item
+        raise LLMError(f"Model returned a JSON array with no object: {parsed!r:.200}")
+
+    raise LLMError(f"Model returned {type(parsed).__name__}, expected an object")
+
+
 def extract_json_object(text: str) -> dict:
     """
     Recover a JSON object from a model response.
 
     Attempts, in order: direct parse, fenced-block extraction, and
     outermost brace-span extraction. Models instructed to emit bare
-    JSON occasionally add a fence or a leading sentence; discarding an
-    otherwise valid response over that would be needlessly brittle.
+    JSON occasionally add a fence, a leading sentence, or an enclosing
+    array; discarding an otherwise valid response over that would be
+    needlessly brittle.
     """
     text = (text or "").strip()
     if not text:
         raise LLMError("Model returned an empty response")
 
     try:
-        return json.loads(text)
+        return _coerce_to_object(json.loads(text))
     except json.JSONDecodeError:
         pass
 
     fenced = _FENCE_PATTERN.search(text)
     if fenced:
         try:
-            return json.loads(fenced.group(1))
+            return _coerce_to_object(json.loads(fenced.group(1)))
         except json.JSONDecodeError:
             pass
 
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end > start:
-        try:
-            return json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            pass
+    # Outermost object span, then outermost array span
+    for opener, closer in (("{", "}"), ("[", "]")):
+        start = text.find(opener)
+        end = text.rfind(closer)
+        if start != -1 and end > start:
+            try:
+                return _coerce_to_object(json.loads(text[start:end + 1]))
+            except json.JSONDecodeError:
+                continue
 
     raise LLMError(f"Model response was not valid JSON: {text[:200]}")
 
