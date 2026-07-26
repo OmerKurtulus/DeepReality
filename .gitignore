@@ -6,28 +6,27 @@ __pycache__/
 venv/
 .env
 
-# ── İşletim sistemi / editör ──
+# ── Operating system and editors ──
 .DS_Store
 .vscode/
 .idea/
 .claude/
 
-# ── Büyük model ağırlıkları ──
-# GitHub dosya limiti (100 MB) nedeniyle repoda tutulmuyor.
-# İndirme bağlantıları ve kurulum talimatı: models/README.md
+# ── Large model weights ──
+# Excluded because they exceed GitHub's 100 MB per-file limit.
+# Download links and placement instructions: models/README.md
+# The trained PIN-F1 artefact is small and IS tracked, so the ensemble
+# stage works from a fresh clone without any download.
 models/*.pt
 models/pin_b4_ai_deepfake_real/model.safetensors
 
-# ── Test görselleri ve analiz çıktıları ──
-# Kişisel fotoğraflar içerdiği için repoya dahil edilmez.
-# Klasör yapısı .gitkeep ile korunur.
+# ── Test images and analysis output ──
+# Excluded because the sample images are personal photographs.
+# The directory structure is preserved with .gitkeep.
 input/*
 !input/.gitkeep
 outputs/*
 !outputs/.gitkeep
-
-# ── Environment / credentials ──
-.env
 
 # ── Files outside the project scope ──
 index.html

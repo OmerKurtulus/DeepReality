@@ -1,0 +1,56 @@
+DeepReality
+Copyright (c) 2026 Ömer Faruk Kurtuluş
+
+Licensed under the MIT License (see LICENSE).
+
+────────────────────────────────────────────────────────────────────────
+ATTRIBUTION
+────────────────────────────────────────────────────────────────────────
+
+The MIT License requires that the copyright notice above be retained in
+all copies or substantial portions of this software. That requirement is
+binding: if you reuse this code, ship it, or build a product on it, the
+notice travels with it.
+
+Beyond that legal minimum, if you use this system or publish results
+produced with it, please cite it. Citation formats are given in
+CITATION.cff and in section 12 of the README; GitHub also renders a
+"Cite this repository" button from the former.
+
+    Kurtuluş, Ö. F. (2026). DeepReality: A Multi-Layer Forensic
+    Architecture for Detecting AI-Generated and Manipulated Imagery
+    (Version 1.0.0) [Computer software].
+    https://github.com/OmerKurtulus/DeepReality
+
+If you cite a specific measurement, please state which one. The Layer 2
+figures are in-distribution results on their own corpus; the Layer 6
+figure is cross-validated on a corpus none of the base detectors were
+trained on. They are not comparable, and the difference between them is
+the point the project is making.
+
+────────────────────────────────────────────────────────────────────────
+THIRD-PARTY COMPONENTS
+────────────────────────────────────────────────────────────────────────
+
+This software builds on third-party models and libraries governed by
+their own licences:
+
+  openai/clip-vit-large-patch14                          MIT
+  google/siglip2-base-patch16-512                        Apache 2.0
+  prithivMLmods/AI-vs-Deepfake-vs-Real-Siglip2           Apache 2.0
+  MediaPipe BlazeFace                                    Apache 2.0
+  PyTorch, Transformers, OpenCV, SciPy, PyWavelets,
+  XGBoost, scikit-learn, c2pa-python, Pillow             see each project
+
+Datasets referenced for training and evaluation remain subject to the
+terms of their respective providers.
+
+────────────────────────────────────────────────────────────────────────
+INTENDED USE
+────────────────────────────────────────────────────────────────────────
+
+This system produces probabilistic assessments with documented failure
+modes (see "Known limitations" in the README). Its output is not proof of
+authenticity or of forgery and should not be presented as conclusive
+evidence in legal, journalistic or disciplinary proceedings without
+independent corroboration and qualified human review.

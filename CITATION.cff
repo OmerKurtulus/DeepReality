@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+title: "DeepReality: A Multi-Layer Forensic Architecture for Detecting AI-Generated and Manipulated Imagery"
+message: "If you use this software or its results, please cite it as below."
+type: software
+authors:
+  - family-names: "Kurtuluş"
+    given-names: "Ömer Faruk"
+    orcid: ""
+repository-code: "https://github.com/OmerKurtulus/DeepReality"
+url: "https://github.com/OmerKurtulus/DeepReality"
+abstract: >-
+  DeepReality is a six-layer forensic architecture for detecting
+  AI-generated and manipulated imagery. Fifteen independent analysis
+  modules ("pins") examine an image from mutually independent
+  epistemic positions — documentary provenance, compression physics,
+  spatial deep learning, frequency-domain analysis, gradient-based
+  explainability — and an adjudication stage resolves them under an
+  explicit four-tier evidence hierarchy in which cryptographic
+  provenance constrains statistical inference rather than competing
+  with it. A calibrated gradient-boosted meta-learner provides a
+  statistically derived second opinion, cross-checked against the
+  symbolic adjudication.
+keywords:
+  - deepfake detection
+  - synthetic media
+  - image forensics
+  - explainable AI
+  - C2PA
+  - content provenance
+  - ensemble learning
+  - CLIP
+  - SigLIP
+license: MIT
+version: "1.0.0"
+date-released: "2026-07-27"

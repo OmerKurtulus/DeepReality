@@ -60,7 +60,6 @@ from layer6_ensemble.feature_extractor import (
     FEATURE_NAMES,
     FEATURE_SCHEMA_VERSION,
     extract_features,
-    features_to_vector,
 )
 
 # Pins whose evidence forms the feature vector. PIN-E1 is deliberately
@@ -94,10 +93,13 @@ def _load_model():
     if not model_path.exists():
         return None, None
 
-    import xgboost as xgb
+    # The saved JSON is evaluated directly rather than through the xgboost
+    # runtime; see layer6_ensemble.booster_eval for why that library cannot
+    # share a process with PyTorch on macOS. Equivalence with xgboost is
+    # asserted by tests/test_booster_eval.py.
+    from layer6_ensemble.booster_eval import NativeBooster
 
-    booster = xgb.Booster()
-    booster.load_model(str(model_path))
+    booster = NativeBooster(model_path)
 
     metadata = {}
     if meta_path.exists():
@@ -295,12 +297,20 @@ class PinF1Ensemble(BasePin):
                 )
                 self.errors.append(schema_warning)
 
-            import numpy as np
-            import xgboost as xgb
+            # The artefact records the exact columns it was fitted on, which
+            # need not be the full contract: the deployed model is restricted
+            # to Tier 3 and Tier 4 evidence because provenance is adjudicated
+            # by the Layer 5 rule calculus rather than learned. Scoring
+            # against the full vector would misalign every column.
+            model_features = metadata.get("feature_names") or list(FEATURE_NAMES)
+            missing = [f for f in model_features if f not in features]
+            if missing:
+                raise KeyError(
+                    f"Artefact expects features absent from this runtime: "
+                    f"{missing[:5]}"
+                )
 
-            vector = np.array([features_to_vector(features)], dtype=np.float32)
-            dmatrix = xgb.DMatrix(vector, feature_names=list(FEATURE_NAMES))
-            raw = float(booster.predict(dmatrix)[0])
+            raw = booster.predict([features[name] for name in model_features])
             score = _apply_calibration(raw, metadata)
             model_status = "trained"
             model_info = {
@@ -319,10 +329,11 @@ class PinF1Ensemble(BasePin):
         top_features = None
         if booster is not None and metadata.get("feature_importance"):
             importance = metadata["feature_importance"]
+            scored = metadata.get("feature_names") or list(FEATURE_NAMES)
             present = {
                 name: features[name]
-                for name in FEATURE_NAMES
-                if not math.isnan(features[name])
+                for name in scored
+                if name in features and not math.isnan(features[name])
             }
             ranked = sorted(
                 present.items(),

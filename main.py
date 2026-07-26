@@ -28,6 +28,8 @@ Execution model (PIN Architecture — parallel):
     PIN-D2: Anomaly localisation       -> {stem}_XAI_D2_anomaly.png
                   | after every upstream pin
     PIN-E1: LLM reasoning engine       -> {stem}_PIN-E1.json
+                  | after every upstream pin plus E1
+    PIN-F1: Ensemble fusion            -> {stem}_PIN-F1.json
 
 Author: Omer Faruk Kurtulus
 """
@@ -455,10 +457,13 @@ def print_pin_f1_summary(result: dict):
     info = r.get("model_info", {})
     metrics = info.get("holdout_metrics") or {}
     if metrics:
-        print(
-            f"    Holdout:  ROC-AUC {metrics.get('roc_auc', '?')} | "
-            f"acc {metrics.get('accuracy', '?')} | ECE {metrics.get('ece', '?')}"
-        )
+        # Report only the metrics the artefact actually recorded; the set
+        # differs between a held-out split and a cross-validated fit.
+        shown = [f"{k.upper().replace('_', '-')} {v}"
+                 for k, v in metrics.items()
+                 if k in ("roc_auc", "accuracy", "f1", "ece")]
+        if shown:
+            print(f"    Kalite:   {' | '.join(shown)}")
 
     for feature in (r.get("top_features") or [])[:3]:
         print(

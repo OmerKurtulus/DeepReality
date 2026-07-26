@@ -17,7 +17,7 @@ def analyze(self, file_path: str) -> dict:
 
 `BasePin.run()` wraps that return value in the standard envelope, computes the SHA-256 content hash, captures exceptions, and persists the result to `outputs/{stem}_{PIN-ID}.json`. A pin that raises does not propagate the exception: it emits an envelope with `status: "error"`, which the orchestrator treats as a completed dependency so that downstream pins may still proceed with reduced evidence.
 
-The uniform envelope is what allows Layer 5 to apply one interpretation protocol to eleven heterogeneous instruments:
+The uniform envelope is what allows Layer 5 to apply one interpretation protocol to twelve heterogeneous instruments:
 
 | Field | Meaning |
 |---|---|
@@ -47,6 +47,9 @@ run = pipeline.run(image_path, on_pin_complete=callback)
 
 The current graph:
 
+See [docs/dependency-graph.svg](docs/dependency-graph.svg) for the rendered
+graph. In text form:
+
 ```
 PIN-A1  PIN-A2  PIN-A3  PIN-A4  PIN-B1  PIN-B2  PIN-B3  PIN-B4     (concurrent)
                                    |       |       |
@@ -61,6 +64,10 @@ PIN-A1  PIN-A2  PIN-A3  PIN-A4  PIN-B1  PIN-B2  PIN-B3  PIN-B4     (concurrent)
                             all upstream --+
                                            v
                                         PIN-E1
+                                           |
+                     all upstream + E1 ----+
+                                           v
+                                        PIN-F1  ->  consensus
 ```
 
 **Threads rather than processes.** PyTorch inference, NumPy/OpenCV kernels and file I/O all release the GIL, so threads achieve real parallelism on this workload. More importantly, the loaded models — several gigabytes in aggregate — are shared from memory rather than duplicated per process.
@@ -157,6 +164,48 @@ Static instrument characteristics live in the system prompt rather than the per-
 
 **Auditability.** With `save_prompt_transcript` enabled, the exact prompt payload and raw response are written to `outputs/{stem}_PIN-E1_transcript.json`. A forensic conclusion that cannot be traced to the evidence and instructions that produced it has no evidentiary standing.
 
+### 2.5 Layer 6 — Ensemble Fusion
+
+| Module | Responsibility |
+|---|---|
+| `feature_extractor.py` | The 54-column feature contract, imported by both training and inference |
+| `booster_eval.py` | Evaluates the saved XGBoost JSON without the xgboost runtime |
+| `pin_f1_ensemble.py` | PIN-F1: scoring, calibration, feature attribution, E1 consensus |
+
+**One contract, two consumers.** Training and inference import the same
+`extract_features()`, which removes the most common defect in stacked
+ensembles — a meta-learner scored against a vector assembled differently
+from the one it was fitted on. The contract is versioned, and the trained
+artefact records the version it was built against so a mismatch warns
+rather than mis-scores silently.
+
+**Missing evidence is NaN, not zero.** Zero is a measurement; NaN is an
+absence. Gradient-boosted trees learn a default traversal direction for
+NaN at every split, so the distinction survives into the model instead of
+being flattened at the input. This is what lets the ensemble degrade
+coherently when a pin fails.
+
+**No xgboost at inference.** The library's macOS wheels link against
+Homebrew's OpenMP runtime while PyTorch bundles its own; loading both into
+one process and entering a parallel region segfaults the interpreter.
+Since every pin imports torch, the ensemble stage would crash on every
+prediction. `booster_eval.NativeBooster` traverses the saved JSON
+directly — a few thousand comparisons for a single row — which removes the
+conflict and the dependency together. Equivalence with xgboost is asserted
+by `tests/test_booster_eval.py`, currently matching to 2.9e-07.
+
+**Scope.** The deployed model uses 33 of the 54 columns. Provenance and
+face-composition features are withheld because the rule calculus of Layer 5
+already adjudicates provenance, and because both groups separate the
+training corpora at 0.95+ AUC, which makes them shortcut vectors for a
+statistical stage.
+
+**Consensus, not a flag.** Divergence from PIN-E1 is classified rather
+than merely detected: dissent is *expected* when Layer 5 decided on
+documentary grounds (R1–R3), because F1 does not observe provenance, and
+constitutes a genuine *conflict* only under statistical rules (R4–R5).
+Collapsing the two would raise a warning on every C2PA-signed image.
+
 ---
 
 ## 3. Configuration
@@ -187,7 +236,7 @@ To add a pin:
 4. Add a summary renderer and an entry in `PIN_DISPLAY_ORDER`.
 5. If the pin should inform adjudication, extend `evidence_builder.py` and describe the instrument in `prompts.SYSTEM_PROMPT` — a pin the reasoning stage cannot interpret contributes nothing to the verdict.
 
-The remaining architectural stages are Layer 3 (video temporal analysis: frame consistency, lip-audio synchronisation, biological signal) and Layer 6 (an XGBoost meta-learner cross-validated against the Layer 5 verdict).
+The one remaining architectural stage is Layer 3 — video temporal analysis: frame consistency, lip-audio synchronisation and biological signal.
 
 ---
 

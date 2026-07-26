@@ -1,0 +1,17 @@
+# DeepReality — additional dependencies for TRAINING the Layer 6 meta-learner
+#
+#   pip install -r requirements.txt -r requirements-train.txt
+#
+# Only needed to fit a new PIN-F1 artefact (notebooks/train_f1_cv.py).
+# Running the pipeline with the supplied model requires none of these.
+#
+# macOS note: xgboost links against Homebrew's OpenMP runtime while PyTorch
+# bundles its own, and loading both into one process segfaults. Train in a
+# separate interpreter, or on Colab, and let layer6_ensemble.booster_eval
+# handle inference.
+
+xgboost==3.3.0              # gradient-boosted meta-learner
+scikit-learn==1.9.0         # Platt calibration, cross-validation, metrics
+pandas==2.2.3               # feature matrix assembly and parquet checkpoints
+pyarrow==18.1.0             # parquet backend
+datasets==3.2.0             # streaming corpus access from the Hugging Face Hub

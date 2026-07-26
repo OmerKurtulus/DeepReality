@@ -6,6 +6,8 @@
   <img src="https://img.shields.io/badge/python-3.10%2B-141413?style=flat-square&labelColor=E6E3D8" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/execution-concurrent%20DAG-141413?style=flat-square&labelColor=E6E3D8" alt="Concurrent DAG">
   <img src="https://img.shields.io/badge/paradigms-spatial%20%C2%B7%20frequency%20%C2%B7%20provenance-6E6B63?style=flat-square&labelColor=E6E3D8" alt="Paradigms">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-141413?style=flat-square&labelColor=E6E3D8" alt="MIT licence"></a>
+  <a href="https://www.linkedin.com/in/%C3%B6mer-faruk-kurtulu%C5%9F-5b0465204"><img src="https://img.shields.io/badge/LinkedIn-%C3%96mer%20Faruk%20Kurtulu%C5%9F-141413?style=flat-square&logo=linkedin&logoColor=F0EEE6" alt="LinkedIn"></a>
 </p>
 
 **A multi-layer forensic architecture for detecting AI-generated and manipulated imagery.**
@@ -29,6 +31,7 @@ DeepReality combines several mutually independent analytical paradigms — docum
 - [9. Execution model](#9-execution-model)
 - [10. Installation and use](#10-installation-and-use)
 - [11. Known limitations](#11-known-limitations)
+- [12. Licence and citation](#12-licence-and-citation)
 - [Author](#author) · [References](#references)
 
 ---
@@ -81,12 +84,7 @@ A pin that fails does not halt the pipeline. Its failure is propagated through t
 
 The four tiers below govern the entire system and are encoded formally in the Layer 5 reasoning protocol.
 
-| Tier | Class | Instruments | Standing |
-|---|---|---|---|
-| 1 | Decisive provenance | PIN-A2, PIN-A1 signatures | Documentary; near-certain |
-| 2 | Capture telemetry | PIN-A1 camera/GPS/timestamp | Strong but rebuttable |
-| 3 | Learned detectors | PIN-B1…B4 | Primary statistical evidence |
-| 4 | Localisation and attention | PIN-A3, PIN-D1, PIN-D2 | Supporting; never decisive alone |
+![Evidence hierarchy](docs/evidence-hierarchy.svg)
 
 Two principles are stated explicitly because both are routinely violated in practice:
 
@@ -338,26 +336,19 @@ Conflict between instruments is not resolved by averaging. Averaging presumes th
 
 The ordering implements **lexicographic priority over the evidence tiers of §2.4**: no accumulation of lower-tier evidence, however large, can outweigh a higher tier. This is the formal expression of *provenance dominates statistics*.
 
-Let the predicates be:
+![Decision calculus](docs/decision-calculus.svg)
+
+The predicates the rules test:
 
 | Symbol | Meaning |
 |---|---|
-| `P_ai` | Tier 1 AI provenance — valid C2PA manifest with an AI `digital_source_type`, a known AI issuer/software agent, an explicit generator signature, or an unvalidated IPTC source-type marker |
+| `P_ai` | Tier 1 AI provenance — valid C2PA manifest with an AI `digital_source_type`, a known AI issuer or software agent, an explicit generator signature, or an unvalidated IPTC source-type marker |
 | `P_cap` | Tier 1 authentic-capture provenance — signed camera-capture manifest with no AI action and no edit history |
 | `T_cam` | Tier 2 capture telemetry — coherent camera EXIF, ideally with GPS and `DateTimeOriginal` |
 | `μ` | Mean fake probability across the available Layer 2 detectors |
 | `σ_spread` | `max − min` of those probabilities |
 | `F` | Count of corroborated (fused) regions reported by PIN-D2 |
 | `A_subj` | Grad-CAM attention concentrated on the semantic subject rather than on background |
-
-| Rule | Precondition | Outcome |
-|---|---|---|
-| **R1** | `P_ai` | Verdict taken **from the declared source type**: `trainedAlgorithmicMedia`/`algorithmicMedia` → `AI_GENERATED`; `compositeWithTrainedAlgorithmicMedia` → `DEEPFAKE`. Confidence 0.93–0.98, reduced to 0.85–0.90 when the signature could not be validated. Detector dissent raises no objection to the verdict — it only indicates the generator is visually convincing, which is stated. PIN-B4's class opinion does **not** override the declaration. |
-| **R2** | `P_cap ∧ ¬P_ai` | `AUTHENTIC`, confidence 0.85–0.93. |
-| **R3** | `T_cam ∧ μ ≥ 0.5` | The conflict case. If `F = 0 ∧ ¬A_subj`, the computational-photography failure mode is diagnosed: Tier 2 prevails, verdict `AUTHENTIC` or `SUSPICIOUS`, and the suspected false positive is named explicitly. If `F > 0 ∧ A_subj`, the manipulation hypothesis survives: `DEEPFAKE` at moderate confidence. |
-| **R4** | `¬P_ai ∧ ¬P_cap ∧ ¬T_cam ∧ σ_spread ≤ 0.40` | Decide on Tier 3 consensus, qualified by Tier 4. **Only here** — where no source type was declared — does PIN-B4's class distribution choose between `AI_GENERATED` and `DEEPFAKE`. |
-| **R5** | `σ_spread > 0.40 ∧ ¬P_ai ∧ ¬P_cap` | `SUSPICIOUS`, confidence ≤ 0.60, with the disagreeing detectors named. Wide dispersion means at least one instrument is outside its validated domain; the system reports that rather than concealing it behind an average. |
-| **R6** | Evidence insufficient or irreconcilable | `INCONCLUSIVE`. Selecting this honestly is correct behaviour, not failure. |
 
 **Worked example — R1.** A Gemini-produced image carried the marker `trainedAlgorithmicMedia` with issuer hint `google_ai`, but the reference parser could not validate the manifest. Detector output was mixed: PIN-B4 reported `Deepfake` at 0.998, while PIN-B1 and PIN-B2 reported 0.416 and 0.056 — near-`REAL`. R1 fired on the unvalidated source-type marker, returning `AI_GENERATED` at confidence 0.88: the producer's declaration set both the verdict and the taxonomy, overriding B4's contrary class opinion, and the reduced confidence recorded the unvalidated signature. Averaging the four detectors would have produced a materially worse answer.
 
@@ -411,14 +402,38 @@ Collapsing these three into a single "agreement" flag would produce a system tha
 
 **Untrained behaviour.** Before an artefact exists the pin reports `model_status: "untrained"` and emits a transparent weighted baseline, labelled as such. An untrained stage that returns a confident number is worse than one that returns none.
 
-**Training.** `notebooks/train_pin_f1_colab.py` is a single Colab cell that extracts features, fits, calibrates and evaluates. Two corpora are used deliberately: fitting on one distribution and measuring on another. Neither is a corpus the base detectors were trained on — a stacked meta-learner fitted to base-model outputs on their own training data learns from overfitted inputs and does not transfer.
+**Training and measured results.** Fitting proceeded through three attempts, and the failures are recorded here because they determined the final design.
 
-| Role | Corpus | Note |
+*Corpus selection.* Neither corpus used may be one the base detectors were trained on: a meta-learner fitted to base-model outputs on their own training data learns from overfitted inputs and does not transfer. Two independent corpora were therefore evaluated, and the base detectors were measured on both before any fusion was attempted:
+
+| Detector | `Hemg/deepfake-and-real-images` | `ComplexDataLab/OpenFake` |
 |---|---|---|
-| Training | `Hemg/deepfake-and-real-images` | 190 K rows, binary labels, unseen by B1–B4 |
-| Cross-dataset holdout | `ComplexDataLab/OpenFake` | 2025, multiple generators, separate test split |
+| PIN-B1 | 0.5673 | 0.6343 |
+| PIN-B2 | 0.5526 | **0.8415** |
+| PIN-B3 | **0.4090** | 0.6262 |
+| PIN-B4 | 0.5283 | 0.6396 |
 
-The notebook reports cross-dataset ROC-AUC, accuracy, F1, Brier score and Expected Calibration Error, alongside each individual detector's ROC-AUC on the same split — so the ensemble's contribution is measured against the bar it must clear, not asserted.
+On Hemg the detectors are at chance, and PIN-B3 is *inverted* — anti-correlated with the label, which is worse than noise because a fusion stage learns to trust it backwards. A stacked ensemble cannot manufacture signal its base learners lack, so Hemg was discarded as a training corpus and retained only as a cross-corpus stress test.
+
+*Scope enforcement.* The first fit on OpenFake reached 0.9918 in cross-validation but only 0.8119 on a held-out split, losing to PIN-B2 alone. Feature importance explained it: `a1_score`, `a1_ai_dimensions` and `a1_exif_field_count` occupied the top places. The model had learned "no EXIF plus generator-typical dimensions implies synthetic" — genuine evidence, but already adjudicated by the rule calculus of §7.2, and strongly corpus-identifying (provenance features separate the two corpora at 0.95+ AUC). The scope this document declares — Tiers 3 and 4 only — was documented but not enforced in code. Enforcing it removed 21 of 54 columns.
+
+*Evaluation protocol.* A train/test split of OpenFake proved unusable: a stacker receiving `b2_prob` as an input scored below `b2_prob` alone, which can only happen when the learned mapping does not hold on the evaluation rows. The final protocol pools the corpus and uses stratified 5-fold cross-validation, so every prediction comes from a model that never saw that row and the detectors are scored on identical rows. That is the only apples-to-apples answer to whether fusion adds anything.
+
+*Result* (2,400 pooled OpenFake samples, 5-fold out-of-fold, 33 features):
+
+| Method | ROC-AUC | Accuracy | F1 | ECE |
+|---|---|---|---|---|
+| **PIN-F1 (XGBoost, depth 3)** | **0.8846** | 0.8104 | 0.8061 | **0.0203** |
+| PIN-F1 (XGBoost, depth 2) | 0.8780 | 0.8108 | 0.8028 | 0.0215 |
+| PIN-F1 (logistic, fusion set) | 0.8323 | 0.7762 | 0.7814 | 0.0817 |
+| PIN-B2 alone — best detector | 0.7244 | 0.5654 | 0.6931 | 0.3856 |
+| PIN-B4 alone | 0.6131 | 0.5288 | 0.6790 | 0.4704 |
+| PIN-B3 alone | 0.5590 | 0.4996 | 0.6663 | 0.4683 |
+| PIN-B1 alone | 0.5099 | 0.5229 | 0.6009 | 0.2346 |
+
+Fusion improves on the best single detector by **+0.16 ROC-AUC**. The calibration result is arguably more consequential: Expected Calibration Error falls from 0.3856 to 0.0203, a factor of nineteen. PIN-B2 reporting 0.80 means very little; PIN-F1 reporting 0.80 corresponds to an empirical 80 % frequency, which is what makes a threshold deployable.
+
+*Deployment gate.* The training notebook refuses to save an artefact that does not exceed the best single detector and fall below an ECE ceiling. A fusion stage that cannot beat its own best input adds only complexity, and the correct outcome in that case is to leave PIN-F1 untrained on its transparent baseline. Two of the three attempts were rejected by this gate.
 
 ---
 
@@ -426,28 +441,7 @@ The notebook reports cross-dataset ROC-AUC, accuracy, F1, Brier score and Expect
 
 ### 9.1 Dependency graph
 
-```
-PIN-A1  PIN-A2  PIN-A3  PIN-A4  PIN-B1  PIN-B2  PIN-B3  PIN-B4     (concurrent)
-                                   │       │       │
-                                   └───────┼───────┘
-                                           ▼
-                                        PIN-D1
-                                           │
-                    PIN-A3, PIN-B3 ────────┤
-                                           ▼
-                                        PIN-D2
-                                           │
-                            all upstream ──┤
-                                           ▼
-                                        PIN-E1
-                                           │
-                    all upstream + E1 ─────┤
-                                           ▼
-                                        PIN-F1  ──►  consensus report
-```
-
-PIN-F1 depends on PIN-E1 solely so the consensus comparison can be made in
-one place; E1's verdict is never a feature.
+![Dependency graph](docs/dependency-graph.svg)
 
 `PinPipeline._validate()` rejects missing dependencies and cycles before execution. The scheduler dispatches every pin whose dependencies are satisfied and blocks on `FIRST_COMPLETED`, so a newly unblocked pin starts without waiting for unrelated work.
 
@@ -478,16 +472,46 @@ The `_pins` channel is how PIN-D2 obtains PIN-D1's raw NumPy activation maps wit
 
 ### 10.1 Installation
 
+**Requirements.** Python 3.10 or newer (developed on 3.13.7), roughly 8 GB of RAM, and about 5 GB of disk for the model weights. A CUDA GPU or Apple Silicon accelerates inference substantially but is not required.
+
 ```bash
-git clone https://github.com/<user>/DeepReality.git
+# 1 · Clone (or fork first, then clone your fork)
+git clone https://github.com/OmerKurtulus/DeepReality.git
 cd DeepReality
 
+# 2 · Create and activate an isolated environment
 python3 -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r Requirements.txt
+source venv/bin/activate            # Windows: venv\Scripts\activate
+
+# 3 · Install the pinned dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-Trained weights (~3.4 GB) are distributed separately; see [models/README.md](models/README.md).
+`requirements.txt` pins every version to the set this project was verified against. The Layer 4 and Layer 6 stages deliberately add no dependency: Grad-CAM is implemented directly on PyTorch hooks, and the trained meta-learner is evaluated from its JSON without the xgboost runtime.
+
+**Optional — training extras.** Only needed to fit a *new* Layer 6 meta-learner; the supplied one works without them.
+
+```bash
+pip install -r requirements-train.txt
+```
+
+**Model weights.** Two artefacts ship with the repository, so Layers 1, 4 and 6 work immediately. The four Layer 2 detectors total about 3.4 GB and are hosted separately — see [models/README.md](models/README.md) for links and placement. PIN-B4's weights are a public third-party model and can be fetched with a single `curl`.
+
+**Verify the installation:**
+
+```bash
+python3 -c "import main; p = main.build_pipeline(); p._validate(); print(len(p._nodes), 'pins ready')"
+python3 tests/test_booster_eval.py
+```
+
+The first prints `12 pins ready`. The second asserts that the dependency-free model evaluator reproduces xgboost's own predictions to within 1e-6, and skips cleanly if no trained artefact is present.
+
+**Platform notes.**
+
+- *macOS.* If you install the training extras, note that xgboost links against Homebrew's OpenMP runtime while PyTorch bundles its own; loading both into one process segfaults. Inference is unaffected — that is precisely why `layer6_ensemble/booster_eval.py` exists — but train in a separate interpreter or on Colab.
+- *HEIC/HEIF.* iPhone photographs are supported through `pillow-heif`, which is installed by default.
+- *First run.* PIN-B1 and PIN-B2 fetch their base architectures from the Hugging Face Hub once. Everything except Layer 5 then runs offline.
 
 ### 10.2 Configuration
 
@@ -546,9 +570,11 @@ DeepReality/
 │   └── pin_e1_llm.py            # PIN-E1
 ├── layer6_ensemble/
 │   ├── feature_extractor.py     # 54-feature contract, shared by train and inference
+│   ├── booster_eval.py          # Dependency-free evaluator for the saved model
 │   └── pin_f1_ensemble.py       # PIN-F1
-├── notebooks/
-│   └── train_pin_f1_colab.py    # Single-cell Colab training pipeline
+├── notebooks/                   # Colab training and diagnostic scripts
+├── tests/                       # Equivalence test for the model evaluator
+├── docs/                        # Architecture diagrams (SVG)
 ├── models/                      # Trained weights — see models/README.md
 ├── input/                       # Images to analyse
 └── outputs/                     # Analysis results
@@ -574,19 +600,99 @@ Stated explicitly, since a detection system whose failure modes are undocumented
 
 **Free-tier reasoning models.** Smaller models occasionally emit malformed JSON or shallower justifications. PIN-E1 repairs what it can and records each repair, but adjudication quality is bounded by the configured model.
 
+**Detector transfer is corpus-dependent, and the ensemble inherits it.** The measurements in §8 are unambiguous: the Layer 2 detectors carry real signal on `OpenFake` (PIN-B2 at 0.84 on a held-out split) and none at all on `Hemg/deepfake-and-real-images`, where all four sit at chance and PIN-B3 is anti-correlated. PIN-F1 is fitted on the corpus where its inputs are informative and therefore inherits that boundary: it should be expected to work on generator families resembling OpenFake's and to degrade on families resembling Hemg's. The honest reading of the 0.8846 figure is "cross-validated on OpenFake", not "generalises to any generator". Extending the corpus is the correct response, and the cached feature matrices make retraining a matter of minutes.
+
+---
+
+---
+
+## 12. Licence and citation
+
+### Licence
+
+DeepReality is released under the **MIT License** ([LICENSE](LICENSE)) — a permissive, OSI-approved open-source licence. You may use, copy, modify, merge, publish, distribute, sublicense and sell copies of the software, including commercially, without asking permission.
+
+One condition applies, and it is binding: **the copyright notice must be retained** in all copies or substantial portions of the software. If you reuse this code, ship it, or build a product on it, the attribution travels with it. [NOTICE](NOTICE) sets out what that means in practice, together with the licences of the third-party models this system builds on.
+
+Contributions are welcome as pull requests.
+
+### Citation
+
+If you use this system, or results produced with it, please cite it. GitHub renders a *Cite this repository* button from [CITATION.cff](CITATION.cff); the formats below are equivalent.
+
+**Plain text**
+
+> Kurtuluş, Ö. F. (2026). *DeepReality: A Multi-Layer Forensic Architecture for Detecting AI-Generated and Manipulated Imagery* (Version 1.0.0) [Computer software]. https://github.com/OmerKurtulus/DeepReality
+
+**BibTeX**
+
+```bibtex
+@software{kurtulus2026deepreality,
+  author  = {Kurtuluş, Ömer Faruk},
+  title   = {DeepReality: A Multi-Layer Forensic Architecture for
+             Detecting AI-Generated and Manipulated Imagery},
+  year    = {2026},
+  version = {1.0.0},
+  url     = {https://github.com/OmerKurtulus/DeepReality}
+}
+```
+
+**APA**
+
+> Kurtuluş, Ö. F. (2026). *DeepReality: A multi-layer forensic architecture for detecting AI-generated and manipulated imagery* (Version 1.0.0) [Computer software]. GitHub. https://github.com/OmerKurtulus/DeepReality
+
+If you cite a specific measurement, please state which one — the Layer 2 figures are in-distribution and the Layer 6 figure is cross-validated, and they are not comparable.
+
 ---
 
 ## Author
 
-**Ömer Faruk Kurtuluş**
+**[Ömer Faruk Kurtuluş](https://www.linkedin.com/in/%C3%B6mer-faruk-kurtulu%C5%9F-5b0465204)**
+
+For permission requests under the licence, or questions about the
+architecture, reach me through LinkedIn.
 
 ## References
 
+Works the architecture draws on directly, grouped by the component they inform.
+
+**Vision-language backbones (PIN-B1, PIN-B2, PIN-B4)**
+
 1. Radford, A. et al. (2021). *Learning Transferable Visual Models From Natural Language Supervision.* ICML 2021. [arXiv:2103.00020](https://arxiv.org/abs/2103.00020)
 2. Zhai, X. et al. (2023). *Sigmoid Loss for Language Image Pre-Training.* ICCV 2023. [arXiv:2303.15343](https://arxiv.org/abs/2303.15343)
-3. Selvaraju, R. R. et al. (2017). *Grad-CAM: Visual Explanations from Deep Networks via Gradient-based Localization.* ICCV 2017. [arXiv:1610.02391](https://arxiv.org/abs/1610.02391)
-4. Rössler, A. et al. (2019). *FaceForensics++: Learning to Detect Manipulated Facial Images.* ICCV 2019. [arXiv:1901.08971](https://arxiv.org/abs/1901.08971)
-5. Yan, Z. et al. (2024). *DF40: Toward Next-Generation Deepfake Detection.* [arXiv:2406.13156](https://arxiv.org/abs/2406.13156)
-6. Chung, J. S. & Zisserman, A. (2016). *Out of Time: Automated Lip Sync in the Wild.* ACCV 2016 Workshops.
-7. Chen, T. & Guestrin, C. (2016). *XGBoost: A Scalable Tree Boosting System.* KDD 2016. [arXiv:1603.02754](https://arxiv.org/abs/1603.02754)
-8. Coalition for Content Provenance and Authenticity (2024). *C2PA Technical Specification.* [c2pa.org](https://c2pa.org)
+3. Tschannen, M. et al. (2025). *SigLIP 2: Multilingual Vision-Language Encoders with Improved Semantic Understanding, Localization, and Dense Features.* [arXiv:2502.14786](https://arxiv.org/abs/2502.14786) — the encoder used by PIN-B2 and PIN-B4.
+
+**Detection methodology**
+
+4. Ojha, U., Li, Y. & Lee, Y. J. (2023). *Towards Universal Fake Image Detectors that Generalize Across Generative Models.* CVPR 2023. [arXiv:2302.10174](https://arxiv.org/abs/2302.10174) — establishes that a frozen vision-language backbone generalises to unseen generators far better than a fine-tuned one. PIN-B1's design follows this result.
+5. Wang, S.-Y. et al. (2020). *CNN-Generated Images Are Surprisingly Easy to Spot… For Now.* CVPR 2020. [arXiv:1912.11035](https://arxiv.org/abs/1912.11035)
+6. Frank, J. et al. (2020). *Leveraging Frequency Analysis for Deep Fake Image Recognition.* ICML 2020. [arXiv:2003.08685](https://arxiv.org/abs/2003.08685) — the frequency-domain argument behind PIN-B3.
+
+**Explainability (PIN-D1, PIN-D2)**
+
+7. Selvaraju, R. R. et al. (2017). *Grad-CAM: Visual Explanations from Deep Networks via Gradient-Based Localization.* ICCV 2017. [arXiv:1610.02391](https://arxiv.org/abs/1610.02391)
+8. Krawetz, N. (2007). *A Picture's Worth: Digital Image Analysis and Forensics.* Black Hat Briefings — the Error Level Analysis technique implemented in PIN-A3.
+
+**Ensemble and calibration (PIN-F1)**
+
+9. Wolpert, D. H. (1992). *Stacked Generalization.* Neural Networks, 5(2), 241–259 — the stacking scheme PIN-F1 implements.
+10. Chen, T. & Guestrin, C. (2016). *XGBoost: A Scalable Tree Boosting System.* KDD 2016. [arXiv:1603.02754](https://arxiv.org/abs/1603.02754)
+11. Platt, J. (1999). *Probabilistic Outputs for Support Vector Machines and Comparisons to Regularized Likelihood Methods.* Advances in Large Margin Classifiers — the calibration method applied to the meta-learner output.
+12. Guo, C. et al. (2017). *On Calibration of Modern Neural Networks.* ICML 2017. [arXiv:1706.04599](https://arxiv.org/abs/1706.04599) — the source of Expected Calibration Error, the metric this project reports alongside ROC-AUC.
+
+**Preprocessing and provenance**
+
+13. Bazarevsky, V. et al. (2019). *BlazeFace: Sub-Millisecond Neural Face Detection on Mobile GPUs.* [arXiv:1907.05047](https://arxiv.org/abs/1907.05047) — the detector behind PIN-A4.
+14. Coalition for Content Provenance and Authenticity (2024). *C2PA Technical Specification.* [c2pa.org](https://c2pa.org) — the standard PIN-A2 parses and validates.
+
+**Video temporal, for the deferred Layer 3**
+
+15. Chung, J. S. & Zisserman, A. (2016). *Out of Time: Automated Lip Sync in the Wild.* ACCV 2016 Workshops — the SyncNet approach specified for PIN-C2.
+16. Ciftci, U. A., Demir, I. & Yin, L. (2020). *FakeCatcher: Detection of Synthetic Portrait Videos Using Biological Signals.* IEEE TPAMI — the rPPG approach specified for PIN-C3.
+
+**Corpora**
+
+17. Rössler, A. et al. (2019). *FaceForensics++: Learning to Detect Manipulated Facial Images.* ICCV 2019. [arXiv:1901.08971](https://arxiv.org/abs/1901.08971)
+18. Yan, Z. et al. (2024). *DF40: Toward Next-Generation Deepfake Detection.* [arXiv:2406.13156](https://arxiv.org/abs/2406.13156)
+19. ComplexDataLab. *OpenFake.* Hugging Face. [huggingface.co/datasets/ComplexDataLab/OpenFake](https://huggingface.co/datasets/ComplexDataLab/OpenFake) — the corpus PIN-F1 is trained and cross-validated on.
+20. prithivMLmods. *AI-vs-Deepfake-vs-Real-Siglip2* and *OpenDeepfake-Preview.* Hugging Face — the pretrained PIN-B4 classifier and the corpus PIN-B1–B3 were trained on. Apache 2.0.

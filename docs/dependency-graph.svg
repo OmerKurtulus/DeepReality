@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 640" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica Neue, Arial, sans-serif">
+  <defs>
+    <marker id="dg-a" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0.6 L7.4,4 L0,7.4" fill="none" stroke="#141413" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="dg-g" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0.6 L7.4,4 L0,7.4" fill="none" stroke="#8A867C" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <pattern id="dg-hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="7" height="7" fill="#F0EEE6"/>
+      <line x1="0" y1="0" x2="0" y2="7" stroke="#CFCBBE" stroke-width="1.6"/>
+    </pattern>
+  </defs>
+
+  <rect width="1400" height="640" fill="#F0EEE6"/>
+
+  <text x="60" y="52" fill="#141413" font-size="17" font-weight="600" letter-spacing="-0.2">Dependency graph</text>
+  <text x="60" y="74" fill="#6E6B63" font-size="12.5">Scheduling is derived, not written: a pin starts the moment its declared inputs are satisfied</text>
+  <line x1="60" y1="92" x2="1340" y2="92" stroke="#141413" stroke-width="1"/>
+
+  <!-- ── Concurrent tier ────────────────────────────────────────── -->
+  <rect x="60" y="120" width="1000" height="96" rx="7" fill="none" stroke="#B3AEA0" stroke-width="1" stroke-dasharray="5 4"/>
+  <text x="76" y="142" fill="#8A867C" font-size="10.5" font-weight="700" letter-spacing="1.2">CONCURRENT — NO MUTUAL DEPENDENCY</text>
+
+  <g font-size="12" font-weight="600" fill="#141413">
+    <rect x="76"  y="152" width="106" height="46" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.1"/>
+    <text x="129" y="172" text-anchor="middle">PIN-A1</text>
+    <text x="129" y="188" text-anchor="middle" font-size="9.5" font-weight="400" fill="#6E6B63">Metadata</text>
+
+    <rect x="198" y="152" width="106" height="46" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.1"/>
+    <text x="251" y="172" text-anchor="middle">PIN-A2</text>
+    <text x="251" y="188" text-anchor="middle" font-size="9.5" font-weight="400" fill="#6E6B63">C2PA</text>
+
+    <rect x="320" y="152" width="106" height="46" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.1"/>
+    <text x="373" y="172" text-anchor="middle">PIN-A3</text>
+    <text x="373" y="188" text-anchor="middle" font-size="9.5" font-weight="400" fill="#6E6B63">ELA</text>
+
+    <rect x="442" y="152" width="106" height="46" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.1"/>
+    <text x="495" y="172" text-anchor="middle">PIN-A4</text>
+    <text x="495" y="188" text-anchor="middle" font-size="9.5" font-weight="400" fill="#6E6B63">Face</text>
+
+    <rect x="564" y="152" width="106" height="46" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.1"/>
+    <text x="617" y="172" text-anchor="middle">PIN-B1</text>
+    <text x="617" y="188" text-anchor="middle" font-size="9.5" font-weight="400" fill="#6E6B63">CLIP</text>
+
+    <rect x="686" y="152" width="106" height="46" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.1"/>
+    <text x="739" y="172" text-anchor="middle">PIN-B2</text>
+    <text x="739" y="188" text-anchor="middle" font-size="9.5" font-weight="400" fill="#6E6B63">SigLIP2</text>
+
+    <rect x="808" y="152" width="106" height="46" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.1"/>
+    <text x="861" y="172" text-anchor="middle">PIN-B3</text>
+    <text x="861" y="188" text-anchor="middle" font-size="9.5" font-weight="400" fill="#6E6B63">Frequency</text>
+
+    <rect x="930" y="152" width="106" height="46" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.1"/>
+    <text x="983" y="172" text-anchor="middle">PIN-B4</text>
+    <text x="983" y="188" text-anchor="middle" font-size="9.5" font-weight="400" fill="#6E6B63">3-class</text>
+  </g>
+
+  <!-- Layer 3, deferred -->
+  <rect x="1090" y="152" width="250" height="46" rx="5" fill="url(#dg-hatch)" stroke="#B3AEA0" stroke-width="1.1" stroke-dasharray="4 3"/>
+  <text x="1215" y="172" text-anchor="middle" fill="#57544C" font-size="12" font-weight="600">PIN-C1 · C2 · C3</text>
+  <text x="1215" y="188" text-anchor="middle" fill="#8A867C" font-size="9.5">video temporal — in progress</text>
+
+  <!-- ── D1 ─────────────────────────────────────────────────────── -->
+  <path d="M 617 202 L 617 232 L 700 232 L 700 262" fill="none" stroke="#141413" stroke-width="1.1" marker-end="url(#dg-a)"/>
+  <path d="M 739 202 L 739 232 L 700 232" fill="none" stroke="#141413" stroke-width="1.1"/>
+  <path d="M 861 202 L 861 232 L 700 232" fill="none" stroke="#141413" stroke-width="1.1"/>
+
+  <rect x="594" y="266" width="212" height="46" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.3"/>
+  <text x="700" y="286" text-anchor="middle" fill="#141413" font-size="12" font-weight="600">PIN-D1</text>
+  <text x="700" y="302" text-anchor="middle" fill="#6E6B63" font-size="9.5">Grad-CAM · shares loaded models</text>
+
+  <!-- ── D2 ─────────────────────────────────────────────────────── -->
+  <path d="M 700 316 L 700 372" fill="none" stroke="#141413" stroke-width="1.1" marker-end="url(#dg-a)"/>
+  <path d="M 373 202 L 373 348 L 594 348 L 594 390" fill="none" stroke="#8A867C" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#dg-g)"/>
+  <text x="392" y="342" fill="#8A867C" font-size="9.5">A3 regions</text>
+
+  <rect x="594" y="376" width="212" height="46" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.3"/>
+  <text x="700" y="396" text-anchor="middle" fill="#141413" font-size="12" font-weight="600">PIN-D2</text>
+  <text x="700" y="412" text-anchor="middle" fill="#6E6B63" font-size="9.5">Anomaly localisation</text>
+
+  <!-- ── E1 ─────────────────────────────────────────────────────── -->
+  <path d="M 700 426 L 700 482" fill="none" stroke="#141413" stroke-width="1.1" marker-end="url(#dg-a)"/>
+  <text x="716" y="458" fill="#8A867C" font-size="9.5">all upstream pins</text>
+
+  <rect x="594" y="486" width="212" height="46" rx="5" fill="#141413"/>
+  <text x="700" y="506" text-anchor="middle" fill="#F0EEE6" font-size="12" font-weight="600">PIN-E1</text>
+  <text x="700" y="522" text-anchor="middle" fill="#B3AEA0" font-size="9.5">LLM reasoning · rule calculus</text>
+
+  <!-- ── F1 ─────────────────────────────────────────────────────── -->
+  <path d="M 806 509 L 900 509" fill="none" stroke="#141413" stroke-width="1.1" marker-end="url(#dg-a)"/>
+  <rect x="904" y="486" width="212" height="46" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.3"/>
+  <text x="1010" y="506" text-anchor="middle" fill="#141413" font-size="12" font-weight="600">PIN-F1</text>
+  <text x="1010" y="522" text-anchor="middle" fill="#6E6B63" font-size="9.5">Ensemble fusion</text>
+
+  <text x="820" y="552" fill="#8A867C" font-size="9.5">verdict read for comparison only —</text>
+  <text x="820" y="566" fill="#8A867C" font-size="9.5">never a model input</text>
+
+  <!-- consensus -->
+  <path d="M 1010 536 L 1010 566" fill="none" stroke="#141413" stroke-width="1.1" marker-end="url(#dg-a)"/>
+  <rect x="880" y="570" width="260" height="34" rx="5" fill="#E6E3D8" stroke="#141413" stroke-width="1"/>
+  <text x="1010" y="592" text-anchor="middle" fill="#141413" font-size="10.5" font-weight="600">CONSENSUS · divergence classified</text>
+
+  <!-- ── Notes ──────────────────────────────────────────────────── -->
+  <line x1="60" y1="266" x2="60" y2="604" stroke="#B3AEA0" stroke-width="1"/>
+  <text x="80" y="284" fill="#141413" font-size="11.5" font-weight="600">Validation before execution</text>
+  <text x="80" y="302" fill="#6E6B63" font-size="11">Missing dependencies and cycles are rejected up front,</text>
+  <text x="80" y="318" fill="#6E6B63" font-size="11">so a malformed graph fails at construction rather than</text>
+  <text x="80" y="334" fill="#6E6B63" font-size="11">halfway through an analysis.</text>
+
+  <text x="80" y="368" fill="#141413" font-size="11.5" font-weight="600">Threads, not processes</text>
+  <text x="80" y="386" fill="#6E6B63" font-size="11">Torch inference, NumPy kernels and file I/O all release</text>
+  <text x="80" y="402" fill="#6E6B63" font-size="11">the GIL, and several gigabytes of loaded weights are</text>
+  <text x="80" y="418" fill="#6E6B63" font-size="11">shared from memory rather than duplicated.</text>
+
+  <text x="80" y="452" fill="#141413" font-size="11.5" font-weight="600">Failure degrades, it does not halt</text>
+  <text x="80" y="470" fill="#6E6B63" font-size="11">A failed pin propagates through the context; the</text>
+  <text x="80" y="486" fill="#6E6B63" font-size="11">adjudication stage reasons from what remains and</text>
+  <text x="80" y="502" fill="#6E6B63" font-size="11">lowers its confidence accordingly.</text>
+
+  <text x="80" y="536" fill="#141413" font-size="11.5" font-weight="600">Batch mode inverts the schedule</text>
+  <text x="80" y="554" fill="#6E6B63" font-size="11">On small corpus images the model work falls to</text>
+  <text x="80" y="570" fill="#6E6B63" font-size="11">milliseconds and coordination dominates, so feature</text>
+  <text x="80" y="586" fill="#6E6B63" font-size="11">extraction runs the same graph on a single thread.</text>
+</svg>

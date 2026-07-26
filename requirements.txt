@@ -1,29 +1,41 @@
-# DeepReality — Dependencies
-# pip install -r Requirements.txt
+# DeepReality — pinned runtime dependencies
+#
+#   python3 -m venv venv
+#   source venv/bin/activate          # Windows: venv\Scripts\activate
+#   pip install --upgrade pip
+#   pip install -r requirements.txt
+#
+# Versions are pinned to the set this project was developed and verified
+# against, on Python 3.13.7. Loosen them only if you are prepared to
+# re-verify: transformers in particular changes its model-loading API
+# between major releases, and PIN-B1/B2 construct their architectures
+# through it.
 
-# Layer 1 — Preprocessing
-Pillow>=10.0.0          # PIN-A1, PIN-A3: image loading, EXIF extraction, JPEG re-encoding
-c2pa-python>=0.28.0     # PIN-A2: C2PA Content Credentials parsing and validation
-opencv-python>=4.8.0    # PIN-A3, PIN-A4: ELA heatmaps, image processing, face cropping
-numpy>=1.24.0           # PIN-A3, PIN-A4: statistical analysis
-pillow-heif>=0.16.0     # PIN-A3: iPhone HEIC/HEIF format support
-mediapipe>=0.10.0       # PIN-A4: face detection (BlazeFace) and landmarks
+# ── Layer 1 · Preprocessing ──────────────────────────────────────────
+Pillow==12.1.1              # PIN-A1, PIN-A3: decoding, EXIF, JPEG re-encoding
+pillow-heif==1.2.0          # PIN-A3: HEIC/HEIF support for iPhone photographs
+c2pa-python==0.28.0         # PIN-A2: C2PA manifest parsing and validation
+opencv-python==4.13.0.92    # PIN-A3, PIN-A4, PIN-D1/D2: image processing
+numpy==2.4.2                # numerical core, used throughout
+mediapipe==0.10.32          # PIN-A4: BlazeFace detection and landmarks
 
-# Layer 2 — Detection Core
-torch>=2.0.0            # PIN-B1/B2/B3/B4: deep learning framework
-transformers>=4.40.0    # PIN-B1/B2/B4: Hugging Face model loading
-scipy>=1.11.0           # PIN-B3: DCT transform (scipy.fft.dctn)
-PyWavelets>=1.5.0       # PIN-B3: DWT wavelet decomposition
+# ── Layer 2 · Detection Core ─────────────────────────────────────────
+torch==2.11.0               # PIN-B1/B2/B3/B4 inference
+transformers==5.5.0         # PIN-B1/B2/B4 architectures and processors
+scipy==1.17.1               # PIN-B3: DCT transform
+PyWavelets==1.9.0           # PIN-B3: DWT decomposition
 
-# Layer 4 — Explainability
-# PIN-D1 requires no external XAI package: Grad-CAM is implemented with
-# PyTorch hooks and torch.autograd.grad, which keeps the pin compatible
-# with current transformers releases. torch and opencv suffice.
+# ── Layer 4 · Explainability ─────────────────────────────────────────
+# No additional dependency. Grad-CAM is implemented directly with PyTorch
+# hooks and torch.autograd.grad, which avoids tying this project to a
+# third-party XAI package's release cycle.
 
-# Layer 5 — LLM Reasoning Engine
-requests>=2.31.0        # PIN-E1: OpenAI-compatible chat-completions client
+# ── Layer 5 · LLM Reasoning ──────────────────────────────────────────
+requests==2.32.5            # PIN-E1: OpenAI-compatible chat-completions client
 
-# Layer 6 — Ensemble Fusion
-xgboost>=2.0.0          # PIN-F1: gradient-boosted meta-learner
-scikit-learn>=1.4.0     # PIN-F1: Platt calibration, evaluation metrics
-# macOS note: xgboost requires the OpenMP runtime -> brew install libomp
+# ── Layer 6 · Ensemble Fusion ────────────────────────────────────────
+# No additional dependency at inference time. The trained model is stored
+# as XGBoost JSON and evaluated directly by layer6_ensemble.booster_eval;
+# see that module for why the xgboost runtime is deliberately not loaded
+# alongside PyTorch. To train a new meta-learner instead of using the
+# supplied one, install the extras: pip install -r requirements-train.txt

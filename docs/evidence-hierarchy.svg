@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 620" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica Neue, Arial, sans-serif">
+  <defs>
+    <marker id="eh-a" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0.6 L7.4,4 L0,7.4" fill="none" stroke="#141413" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <rect width="1400" height="620" fill="#F0EEE6"/>
+
+  <text x="60" y="52" fill="#141413" font-size="17" font-weight="600" letter-spacing="-0.2">Evidence hierarchy</text>
+  <text x="60" y="74" fill="#6E6B63" font-size="12.5">Lexicographic priority: no accumulation of lower-tier evidence, however large, outweighs a higher tier</text>
+  <line x1="60" y1="92" x2="1340" y2="92" stroke="#141413" stroke-width="1"/>
+
+  <!-- constraint arrow down the left -->
+  <path d="M 92 130 L 92 508" stroke="#141413" stroke-width="1.2" fill="none" marker-end="url(#eh-a)"/>
+  <text x="76" y="330" fill="#8A867C" font-size="10.5" font-weight="700" letter-spacing="1.3"
+        transform="rotate(-90 76 330)" text-anchor="middle">CONSTRAINS</text>
+
+  <!-- ── TIER 1 ─────────────────────────────────────────────────── -->
+  <rect x="120" y="118" width="1220" height="92" rx="6" fill="#141413"/>
+  <text x="146" y="146" fill="#F0EEE6" font-size="11" font-weight="700" letter-spacing="1.4">TIER 1 — DECISIVE PROVENANCE</text>
+  <text x="146" y="170" fill="#F0EEE6" font-size="13">A signed assertion by the producer about how the asset was made</text>
+  <text x="146" y="192" fill="#B3AEA0" font-size="11.5">PIN-A2 valid C2PA manifest · PIN-A1 generator signature · unvalidated IPTC source type</text>
+  <text x="1314" y="146" text-anchor="end" fill="#B3AEA0" font-size="10.5" font-weight="600" letter-spacing="0.8">DOCUMENTARY</text>
+  <text x="1314" y="192" text-anchor="end" fill="#F0EEE6" font-size="12" font-weight="600">confidence 0.85 – 0.98</text>
+
+  <!-- ── TIER 2 ─────────────────────────────────────────────────── -->
+  <rect x="120" y="222" width="1220" height="92" rx="6" fill="#FFFFFF" stroke="#141413" stroke-width="1.4"/>
+  <text x="146" y="250" fill="#141413" font-size="11" font-weight="700" letter-spacing="1.4">TIER 2 — CAPTURE TELEMETRY</text>
+  <text x="146" y="274" fill="#141413" font-size="13">Coherent camera EXIF describing a specific physical exposure event</text>
+  <text x="146" y="296" fill="#6E6B63" font-size="11.5">PIN-A1 make · model · lens · aperture · ISO · GPS · DateTimeOriginal</text>
+  <text x="1314" y="250" text-anchor="end" fill="#8A867C" font-size="10.5" font-weight="600" letter-spacing="0.8">STRONG · REBUTTABLE</text>
+  <text x="1314" y="296" text-anchor="end" fill="#141413" font-size="12" font-weight="600">confidence 0.80 – 0.93</text>
+
+  <!-- ── TIER 3 ─────────────────────────────────────────────────── -->
+  <rect x="120" y="326" width="1220" height="92" rx="6" fill="#FFFFFF" stroke="#141413" stroke-width="1.1"/>
+  <text x="146" y="354" fill="#141413" font-size="11" font-weight="700" letter-spacing="1.4">TIER 3 — LEARNED DETECTORS</text>
+  <text x="146" y="378" fill="#141413" font-size="13">An inference about how the asset appears</text>
+  <text x="146" y="400" fill="#6E6B63" font-size="11.5">PIN-B1 CLIP · PIN-B2 SigLIP2 · PIN-B3 frequency · PIN-B4 three-class · consensus statistics</text>
+  <text x="1314" y="354" text-anchor="end" fill="#8A867C" font-size="10.5" font-weight="600" letter-spacing="0.8">PRIMARY STATISTICAL</text>
+  <text x="1314" y="400" text-anchor="end" fill="#141413" font-size="12" font-weight="600">capped at 0.90 alone</text>
+
+  <!-- ── TIER 4 ─────────────────────────────────────────────────── -->
+  <rect x="120" y="430" width="1220" height="92" rx="6" fill="#E6E3D8" stroke="#B3AEA0" stroke-width="1.1"/>
+  <text x="146" y="458" fill="#57544C" font-size="11" font-weight="700" letter-spacing="1.4">TIER 4 — LOCALISATION AND ATTENTION</text>
+  <text x="146" y="482" fill="#141413" font-size="13">Where the evidence sits, and where the models looked</text>
+  <text x="146" y="504" fill="#6E6B63" font-size="11.5">PIN-A3 ELA anomalies · PIN-D1 Grad-CAM focus and cross-model IoU · PIN-D2 fused regions</text>
+  <text x="1314" y="458" text-anchor="end" fill="#8A867C" font-size="10.5" font-weight="600" letter-spacing="0.8">SUPPORTING</text>
+  <text x="1314" y="504" text-anchor="end" fill="#57544C" font-size="12" font-weight="600">never decisive alone</text>
+
+  <!-- ── Asymmetry note ─────────────────────────────────────────── -->
+  <line x1="120" y1="548" x2="1340" y2="548" stroke="#B3AEA0" stroke-width="1"/>
+  <text x="120" y="572" fill="#141413" font-size="11.5" font-weight="600">The asymmetry principle</text>
+  <text x="120" y="592" fill="#6E6B63" font-size="11.5">Presence of coherent camera telemetry is strong evidence FOR authentic capture. Its absence is weak evidence of anything, because</text>
+  <text x="120" y="608" fill="#6E6B63" font-size="11.5">virtually every social platform strips metadata on upload. Failing to encode this is the most common error in metadata-based authentication.</text>
+</svg>
