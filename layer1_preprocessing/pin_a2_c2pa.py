@@ -1,35 +1,38 @@
 """
 DeepReality — PIN-A2: C2PA Provenance Analysis
-════════════════════════════════════════════════
+==============================================
 
-Görev:
-    Görsel dosyasında C2PA Content Credentials (provenance) verisi
-    olup olmadığını c2pa-python kütüphanesi ile kontrol eder.
-    Varsa kim üretmiş, hangi araçla, ne zaman, imza geçerli mi
-    bilgisini yapısal olarak çıkarır.
+Purpose:
+    Determine whether the file carries C2PA Content Credentials and, if
+    so, extract in structured form who produced it, with which tool, at
+    what time, and whether the signature validates.
 
-PIN-A1 ile farkı:
-    PIN-A1 → dosya binary byte taraması (heuristik, pattern matching)
-    PIN-A2 → resmi c2pa-python kütüphanesi ile manifest parse + doğrulama
+    This is the most authoritative instrument in the system. Every
+    other pin infers provenance from appearance; this one reads a
+    cryptographically signed assertion made by the producing tool.
 
-Çıktı:
-    has_c2pa       : bool   — C2PA manifest bulundu mu?
-    creator        : str    — İmzalayan kurum (signature_info.issuer)
-    tool           : str    — Üreten araç (claim_generator / softwareAgent)
-    timestamp      : str    — İmza tarihi (ISO format)
-    is_ai_generated: bool   — AI üretimi kanıtı var mı?
-    ai_source_type : str    — Dijital kaynak tipi (IPTC)
-    actions        : list   — C2PA eylem listesi
-    validation     : dict   — İmza doğrulama durumu
-    ingredients    : list   — Kaynak materyal zinciri
-    score          : float  — 0.0 (C2PA yok / gerçek) → 1.0 (kesin AI üretimi)
+Difference from PIN-A1:
+    PIN-A1 -> heuristic byte-pattern scan of the container
+    PIN-A2 -> manifest parsing and validation via the reference
+              c2pa-python implementation
 
-Kütüphane:
+Output:
+    has_c2pa        : bool  — was a C2PA manifest found?
+    creator         : str   — signing organisation (signature_info.issuer)
+    tool            : str   — producing tool (claim_generator / softwareAgent)
+    timestamp       : str   — signature time (ISO 8601)
+    is_ai_generated : bool  — is there evidence of AI generation?
+    ai_source_type  : str   — IPTC digital source type
+    actions         : list  — C2PA action history
+    validation      : dict  — signature validation state
+    ingredients     : list  — chain of source material
+    score           : float — 0.0 (no C2PA / authentic) to 1.0 (certain AI)
+
+Library:
     c2pa-python >= 0.28.0 (pip install c2pa-python)
     https://github.com/contentauth/c2pa-python
 
-Yazar: DeepReality Ekibi
-Tarih: 2026-02-16
+Author: Omer Faruk Kurtulus
 """
 
 import json
@@ -42,10 +45,10 @@ from config.settings import C2PA_CONFIG
 
 class PinA2C2pa(BasePin):
     """
-    PIN-A2: C2PA Content Credentials Provenance Analysis
+    PIN-A2: C2PA Content Credentials provenance analysis.
 
-    c2pa-python Reader ile dosyadaki C2PA manifest'ini okur,
-    doğrular ve yapısal bilgi çıkarır.
+    Reads, validates and structurally decomposes the C2PA manifest of a
+    file using the c2pa-python Reader.
     """
 
     def __init__(self):
@@ -63,35 +66,39 @@ class PinA2C2pa(BasePin):
         self.edit_actions = C2PA_CONFIG["edit_actions"]
 
     # ════════════════════════════════════════════════════════════════
-    # ANA ANALİZ
+    # MAIN ANALYSIS
     # ════════════════════════════════════════════════════════════════
 
     def analyze(self, file_path: str) -> dict:
         """
-        C2PA manifest okuma ve analiz pipeline'ı.
+        C2PA manifest reading and analysis pipeline.
 
-        Adımlar:
-            1. c2pa.Reader ile dosyayı oku
-            2. Active manifest'i bul
-            3. TÜM manifest zincirini tara (parent manifest'ler dahil)
-            4. claim_generator → araç bilgisi çıkar
-            5. signature_info → imzalayan + tarih çıkar
-            6. assertions → eylemler + dijital kaynak tipi çıkar
-            7. ingredients → kaynak zinciri çıkar
-            8. validation_status → imza doğrulama
-            9. Tüm sinyalleri skorla
+        Steps:
+            1. Open the file with c2pa.Reader
+            2. Locate the active manifest
+            3. Scan the ENTIRE manifest chain, parents included
+            4. claim_generator     -> producing tool
+            5. signature_info      -> signer and signature time
+            6. assertions          -> actions and digital source type
+            7. ingredients         -> source material chain
+            8. validation_status   -> signature validation
+            9. Score every collected signal
 
-        NOT: OpenAI gibi bazı sağlayıcılar çift manifest zinciri kullanır:
-            Manifest 1 (parent): c2pa.created + GPT-4o + trainedAlgorithmicMedia
-            Manifest 2 (active): c2pa.opened (sadece "dosya açıldı")
-        Bu yüzden TÜM manifest'leri taramak zorunludur.
+        Note: some providers, OpenAI among them, emit a two-manifest
+        chain in which the informative claim sits in the parent:
+            Manifest 1 (parent): c2pa.created + GPT-4o +
+                                 trainedAlgorithmicMedia
+            Manifest 2 (active): c2pa.opened — merely "file was opened"
+        Scanning only the active manifest would therefore miss the
+        decisive evidence entirely, which is why the full chain is
+        traversed.
         """
 
-        # ── Adım 1: C2PA manifest oku ──
+        # ── Step 1: read the C2PA manifest ──
         manifest_data = self._read_c2pa_manifest(file_path)
 
         if not manifest_data["has_c2pa"]:
-            # C2PA yok → bu PIN için veri yok, skor 0
+            # No C2PA -> this pin has no data to contribute, score 0
             return {
                 "results": self._build_no_c2pa_results(),
                 "score": 0.0,
@@ -103,7 +110,7 @@ class PinA2C2pa(BasePin):
                 )
             }
 
-        # ── Adım 2: Active manifest'ten bilgi çıkar ──
+        # ── Step 2: extract data from the active manifest ──
         active_manifest = manifest_data["active_manifest"]
 
         creator_info = self._extract_creator(active_manifest)
@@ -114,20 +121,20 @@ class PinA2C2pa(BasePin):
         ingredient_analysis = self._analyze_ingredients(active_manifest)
         validation_info = self._extract_validation(manifest_data)
 
-        # ── Adım 3: Tüm manifest zincirini tara (chain enrichment) ──
-        # Active manifest'te eksik kalan bilgileri parent manifest'lerden çek
+        # ── Step 3: scan the whole manifest chain (chain enrichment) ──
+        # Fields missing from the active manifest are recovered from parents
         all_manifests = manifest_data.get("all_manifests", {})
         active_id = manifest_data.get("active_manifest_id")
         chain_info = self._scan_full_chain(all_manifests, active_id)
 
-        # Zenginleştirme: eksik alanları zincirden doldur
+        # Enrichment: fill the gaps from the chain
         creator_info, tool_info, timestamp_info, action_analysis, \
             source_type_analysis = self._enrich_from_chain(
                 creator_info, tool_info, timestamp_info,
                 action_analysis, source_type_analysis, chain_info
             )
 
-        # ── Adım 4: Skorlama ──
+        # ── Step 4: scoring ──
         score, score_breakdown = self._calculate_score(
             creator_info=creator_info,
             tool_info=tool_info,
@@ -223,10 +230,10 @@ class PinA2C2pa(BasePin):
                     "active_manifest": None,
                     "active_manifest_id": None,
                     "manifest_count": 0,
-                    "read_error": None  # Hata değil, C2PA yok
+                    "read_error": None  # Not an error: the file simply carries no C2PA data
                 }
             else:
-                # Gerçek hata
+                # A genuine failure
                 self.errors.append(f"C2PA okuma hatasi: {error_msg}")
                 return {
                     "has_c2pa": False,
@@ -238,16 +245,16 @@ class PinA2C2pa(BasePin):
                 }
 
     # ════════════════════════════════════════════════════════════════
-    # BİLGİ ÇIKARMA (EXTRACTION)
+    # EXTRACTION
     # ════════════════════════════════════════════════════════════════
 
     def _extract_creator(self, manifest: dict) -> dict:
         """
-        İmzalayan kurum bilgisini çıkarır.
+        Extract the signing organisation.
 
-        Kaynaklar:
-            - signature_info.issuer (birincil)
-            - claim_generator_info (ikincil)
+        Sources:
+            - signature_info.issuer   (primary)
+            - claim_generator_info    (secondary)
 
         Returns:
             {
@@ -278,12 +285,12 @@ class PinA2C2pa(BasePin):
 
     def _extract_tool(self, manifest: dict) -> dict:
         """
-        Üreten araç bilgisini çıkarır.
+        Extract the producing tool.
 
-        Kaynaklar:
-            - claim_generator (birincil, ör: "DALL-E 3/1.0 c2pa-rs/0.33.0")
-            - claim_generator_info[].name (ikincil)
-            - assertions içinde softwareAgent (üçüncül)
+        Sources:
+            - claim_generator (primary, e.g. "DALL-E 3/1.0 c2pa-rs/0.33.0")
+            - claim_generator_info (secondary)
+            - softwareAgent within the assertions (tertiary)
 
         Returns:
             {
@@ -297,10 +304,10 @@ class PinA2C2pa(BasePin):
         claim_gen = manifest.get("claim_generator")
         claim_gen_info = manifest.get("claim_generator_info")
 
-        # claim_generator genelde "ToolName/version sdk/version" formatında
+        # claim_generator usually follows "ToolName/version sdk/version"
         claim_gen_parsed = None
         if claim_gen:
-            # İlk parçayı al (araç adı)
+            # Take the first component, which names the tool
             claim_gen_parsed = claim_gen.split("/")[0].strip()
 
         # claim_generator_info varsa
@@ -314,7 +321,7 @@ class PinA2C2pa(BasePin):
         # Assertions'dan softwareAgent ara
         software_agent = self._find_software_agent(manifest)
 
-        # Bilinen AI aracı mı?
+        # Is this a known generative tool?
         is_known = False
         matched_tool = None
         check_strings = [
@@ -341,11 +348,11 @@ class PinA2C2pa(BasePin):
 
     def _find_software_agent(self, manifest: dict) -> str | None:
         """
-        Assertions içinde softwareAgent alanını arar.
+        Search the assertions for a softwareAgent field.
 
-        İki format desteklenir:
-        - c2pa.actions (v1): softwareAgent → action.parameters.softwareAgent (str)
-        - c2pa.actions.v2:   softwareAgent → action.softwareAgent (dict veya str)
+        Two encodings are supported:
+        - c2pa.actions v1: action.parameters.softwareAgent
+        - c2pa.actions v2: action.softwareAgent (dict or string)
         """
         assertions = manifest.get("assertions", [])
         for assertion in assertions:
@@ -356,7 +363,7 @@ class PinA2C2pa(BasePin):
                 actions = data.get("actions", [])
                 for action in actions:
 
-                    # v2 formatı: softwareAgent direkt action içinde (dict)
+                    # v2 encoding: softwareAgent sits directly on the action (dict)
                     agent = action.get("softwareAgent")
                     if agent:
                         if isinstance(agent, dict):
@@ -366,7 +373,7 @@ class PinA2C2pa(BasePin):
                         elif isinstance(agent, str):
                             return agent
 
-                    # v1 formatı: softwareAgent parameters içinde
+                    # v1 encoding: softwareAgent sits under parameters
                     params = action.get("parameters", {})
                     if isinstance(params, dict):
                         param_agent = params.get("softwareAgent")
@@ -375,7 +382,7 @@ class PinA2C2pa(BasePin):
                                 return param_agent.get("name", str(param_agent))
                             return str(param_agent)
 
-            # stds.schema-org.CreativeWork içinde de olabilir
+            # It may also appear inside stds.schema-org.CreativeWork
             if "schema-org" in label and "CreativeWork" in str(label):
                 authors = data.get("author", [])
                 if isinstance(authors, list):
@@ -391,11 +398,11 @@ class PinA2C2pa(BasePin):
 
     def _extract_timestamp(self, manifest: dict) -> dict:
         """
-        İmza tarih bilgisini çıkarır.
+        Extract the signature timestamp.
 
-        Kaynaklar:
-            - signature_info.time (birincil)
-            - claim_generator_info[].time (ikincil)
+        Sources:
+            - signature_info.time         (primary)
+            - claim_generator_info[].time (secondary)
 
         Returns:
             {
@@ -413,14 +420,14 @@ class PinA2C2pa(BasePin):
 
     def _analyze_actions(self, manifest: dict) -> dict:
         """
-        C2PA assertion'larındaki eylemleri analiz eder.
+        Analyse the actions recorded in the C2PA assertions.
 
-        c2pa.actions assertion'ı dosyanın geçmişini anlatır:
-            - c2pa.created    → Oluşturulmuş (AI olabilir)
-            - c2pa.generated  → Üretilmiş (genellikle AI)
-            - c2pa.captured   → Kamerayla çekilmiş (gerçek)
-            - c2pa.edited     → Düzenlenmiş
-            - c2pa.drawing    → Çizilmiş
+        The c2pa.actions assertion narrates the history of the file:
+            - c2pa.created    -> created (possibly by AI)
+            - c2pa.generated  -> generated (usually by AI)
+            - c2pa.captured   -> captured with a camera (authentic)
+            - c2pa.edited     -> edited
+            - c2pa.drawing    -> drawn
 
         Returns:
             {
@@ -449,7 +456,7 @@ class PinA2C2pa(BasePin):
                     action_type = action.get("action", "")
                     actions_found.append(action_type)
 
-                    # softwareAgent: v2=direkt, v1=parameters içinde
+                    # softwareAgent: v2 places it directly, v1 under parameters
                     agent_name = None
                     agent = action.get("softwareAgent")
                     if agent:
@@ -492,18 +499,19 @@ class PinA2C2pa(BasePin):
 
     def _analyze_digital_source_type(self, manifest: dict) -> dict:
         """
-        IPTC digitalSourceType assertion'ını analiz eder.
+        Analyse the IPTC digitalSourceType assertion.
 
-        Bu alan doğrudan AI üretimi olup olmadığını belirtir:
-            - trainedAlgorithmicMedia → AI tarafından üretilmiş
-            - algorithmicMedia → Algoritma ile üretilmiş
-            - compositeWithTrainedAlgorithmicMedia → AI ile düzenlenmiş
+        This field states directly whether the asset was synthesised:
+            - trainedAlgorithmicMedia              -> produced by AI
+            - algorithmicMedia                     -> algorithmically produced
+            - compositeWithTrainedAlgorithmicMedia -> AI-assisted edit
 
-        NOT: Bir manifest'te birden fazla digitalSourceType olabilir.
-        Örneğin Google Gemini:
-            c2pa.edited → trainedAlgorithmicMedia
-            c2pa.edited → composite
-        Bu durumda AI olan kaynak tipi ÖNCELİKLİDİR.
+        Note: a manifest may declare several digital source types. Google
+        Gemini, for example, emits:
+            c2pa.edited -> trainedAlgorithmicMedia
+            c2pa.edited -> composite
+        The AI-bearing type TAKES PRECEDENCE in that situation, since it
+        is the stronger and more specific claim.
 
         Returns:
             {
@@ -514,7 +522,7 @@ class PinA2C2pa(BasePin):
             }
         """
         assertions = manifest.get("assertions", [])
-        all_found = []  # Bulunan tüm source type'lar
+        all_found = []  # Every source type encountered
 
         for assertion in assertions:
             label = assertion.get("label", "")
@@ -529,14 +537,14 @@ class PinA2C2pa(BasePin):
                     if val:
                         all_found.append(val)
 
-            # c2pa.actions assertion'ında gömülü olabilir
+            # It may be embedded in the c2pa.actions assertion
             if "c2pa.actions" in label:
                 for action in data.get("actions", []):
                     ds_type = action.get("digitalSourceType")
                     if ds_type:
                         all_found.append(ds_type)
 
-        # EXIF assertion'larında da olabilir
+        # It may also appear in EXIF assertions
         for assertion in assertions:
             data = assertion.get("data", {})
             if isinstance(data, dict):
@@ -544,7 +552,7 @@ class PinA2C2pa(BasePin):
                 if ds and "iptc.org" in str(ds):
                     all_found.append(ds)
 
-        # Tekrarları temizle (sırayı koru)
+        # Remove duplicates while preserving order
         seen = set()
         unique_found = []
         for t in all_found:
@@ -552,7 +560,7 @@ class PinA2C2pa(BasePin):
                 unique_found.append(t)
                 seen.add(t)
 
-        # Öncelik: AI source type varsa onu seç (en güçlü kanıt)
+        # Precedence: prefer an AI source type, the strongest evidence
         best_type = None
         best_ai = False
         best_category = "none"
@@ -563,7 +571,7 @@ class PinA2C2pa(BasePin):
                 best_type = src
                 best_ai = True
                 best_category = "ai_generated"
-                break  # En güçlü → başka aramaya gerek yok
+                break  # Strongest available — no need to keep searching
             elif "compositewithtrainedalgorithmic" in src_lower:
                 if best_category not in ("ai_generated",):
                     best_type = src
@@ -587,12 +595,12 @@ class PinA2C2pa(BasePin):
 
     def _analyze_ingredients(self, manifest: dict) -> dict:
         """
-        Kaynak materyal zincirini analiz eder.
+        Analyse the chain of source material.
 
-        Ingredients, dosyanın kaynağını gösterir:
-            - parentOf → Ana kaynak (orijinal dosya)
-            - componentOf → Bileşen
-            - inputTo → Girdi olarak kullanılmış
+        Ingredients describe where the asset came from:
+            - parentOf    -> principal source (the original file)
+            - componentOf -> a component of the composition
+            - inputTo     -> consumed as an input
 
         Returns:
             {
@@ -628,11 +636,11 @@ class PinA2C2pa(BasePin):
 
     def _extract_validation(self, manifest_data: dict) -> dict:
         """
-        C2PA imza doğrulama durumunu çıkarır.
+        Extract the signature validation state.
 
-        c2pa-python Reader otomatik olarak imza doğrulama yapar.
-        validation_status alanı varsa sorun var demektir.
-        Yoksa → imza geçerli.
+        The c2pa-python Reader validates signatures automatically. The
+        presence of a validation_status field indicates a problem; its
+        absence means the signature validated cleanly.
 
         Returns:
             {
@@ -644,7 +652,7 @@ class PinA2C2pa(BasePin):
         val_status = manifest_data.get("validation_status")
 
         if val_status is None:
-            # validation_status yoksa → imza geçerli
+            # No validation_status -> the signature is valid
             return {
                 "is_valid": True,
                 "validation_errors": [],
@@ -671,19 +679,20 @@ class PinA2C2pa(BasePin):
         }
 
     # ════════════════════════════════════════════════════════════════
-    # MANİFEST ZİNCİR TARAMASI (CHAIN SCANNING)
+    # MANIFEST CHAIN SCANNING
     # ════════════════════════════════════════════════════════════════
 
     def _scan_full_chain(self, all_manifests: dict,
                          active_id: str | None) -> dict:
         """
-        Tüm manifest zincirini tarar ve AI sinyallerini toplar.
+        Traverse the entire manifest chain and collect AI signals.
 
-        OpenAI örneği:
-            Manifest 1 (parent): c2pa.created, GPT-4o, trainedAlgorithmicMedia
-            Manifest 2 (active): c2pa.opened (bilgi yok)
+        Illustrative OpenAI case:
+            Manifest 1 (parent): c2pa.created, GPT-4o,
+                                 trainedAlgorithmicMedia
+            Manifest 2 (active): c2pa.opened, carrying no information
 
-        Bu metod parent manifest'lerdeki bilgiyi de yakalar.
+        This method recovers the evidence held in parent manifests.
 
         Returns:
             {
@@ -789,11 +798,13 @@ class PinA2C2pa(BasePin):
                            source_type_analysis: dict,
                            chain_info: dict) -> tuple:
         """
-        Active manifest'te eksik kalan bilgileri zincirden doldurur.
+        Fill gaps in the active manifest from the rest of the chain.
 
-        Kural: Active manifest'teki değer varsa dokunma.
-        Sadece eksik (None / empty) alanları zincirden al.
-        Zincirden alınan bilgilere "(from_chain)" notu ekle.
+        Rule: never overwrite a value the active manifest already
+        provides. Only fields that are absent (None or empty) are taken
+        from the chain, and every value sourced that way is annotated
+        with "(from_chain)" so the provenance of the provenance data
+        itself remains auditable.
         """
 
         # ── Creator: issuer eksikse zincirden al ──
@@ -801,7 +812,7 @@ class PinA2C2pa(BasePin):
             for issuer in chain_info.get("all_issuers", []):
                 creator_info["issuer"] = issuer
                 creator_info["from_chain"] = True
-                # AI issuer kontrolü
+                # AI issuer check
                 for known, key in self.known_issuers.items():
                     if known.lower() in issuer.lower():
                         creator_info["is_known_ai_issuer"] = True
@@ -810,11 +821,11 @@ class PinA2C2pa(BasePin):
                 break
 
         # ── Tool: software_agent eksikse zincirden al ──
-        # Bilinen AI aracı olanı tercih et (GPT-4o > OpenAI API)
+        # Prefer the more specific known tool (GPT-4o over OpenAI API)
         if not tool_info.get("software_agent"):
             chain_agents = chain_info.get("all_software_agents", [])
 
-            # Önce bilinen AI aracı olanı bul
+            # First look for a recognised generative tool
             best_agent = None
             best_tool_match = None
             for agent in chain_agents:
@@ -826,7 +837,7 @@ class PinA2C2pa(BasePin):
                 if best_agent:
                     break
 
-            # Bilinen yoksa ilk agent'ı al
+            # Otherwise fall back to the first agent found
             if not best_agent and chain_agents:
                 best_agent = chain_agents[0]
 
@@ -842,7 +853,7 @@ class PinA2C2pa(BasePin):
             for gen in chain_info.get("all_generators", []):
                 parsed = gen.split("/")[0].strip() if gen else gen
                 tool_info["claim_generator_parsed"] = parsed
-                # AI tool kontrolü
+                # AI tool check
                 if not tool_info.get("is_known_ai_tool"):
                     for known_agent in self.known_agents:
                         if known_agent.lower() in parsed.lower():
@@ -859,7 +870,7 @@ class PinA2C2pa(BasePin):
                 timestamp_info["from_chain"] = True
                 break
 
-        # ── Actions: zincirdeki tüm eylemleri birleştir ──
+        # ── Actions: merge every action in the chain ──
         chain_actions = chain_info.get("all_actions", [])
         existing_actions = set(action_analysis.get("actions_found", []))
         for action in chain_actions:
@@ -887,10 +898,10 @@ class PinA2C2pa(BasePin):
                 }
                 action_analysis["action_details"].append(detail)
 
-        # ── Digital Source Type: eksikse VEYA AI değilse zincirden al ──
+        # ── Digital source type: take from the chain if absent or non-AI ──
         # Kurallar:
         #   1. source_type null → zincirden al
-        #   2. source_type var ama AI değil + zincirde AI var → AI olanı al
+        #   2. a source type exists but is not AI, while the chain has one
         #   3. source_type AI → dokunma
         current_is_ai = source_type_analysis.get("is_ai_source", False)
         current_empty = not source_type_analysis.get("source_type")
@@ -898,7 +909,7 @@ class PinA2C2pa(BasePin):
         if current_empty or not current_is_ai:
             for dst in chain_info.get("all_digital_source_types", []):
                 dst_lower = dst.lower()
-                # Sadece AI source type'ları tercih et
+                # Prefer AI source types only
                 if "trainedalgorithmicmedia" in dst_lower:
                     source_type_analysis["source_type"] = dst
                     source_type_analysis["is_ai_source"] = True
@@ -930,25 +941,26 @@ class PinA2C2pa(BasePin):
                          ingredient_analysis: dict,
                          validation_info: dict) -> tuple[float, dict]:
         """
-        C2PA provenance verilerinden dinamik skor hesaplar.
+        Compute a graduated score from the C2PA provenance data.
 
-        C2PA bulunduysa (bu metot sadece C2PA varken çağrılır):
+        Invoked only when a manifest was found.
 
-        Baz skor: 0.40 (C2PA var = en azından dijital araç kullanılmış)
+        Base score: 0.40 — the presence of C2PA establishes at minimum
+        that a digital tool was involved.
 
-        Artırıcı sinyaller (kesin kanıtlar):
-            - digitalSourceType = trainedAlgorithmicMedia  → +0.35
-            - digitalSourceType = compositeWithTrained...  → +0.25
-            - Bilinen AI issuer (OpenAI, Google, vb.)      → +0.15
-            - Bilinen AI araç (DALL-E, Gemini, vb.)        → +0.15
-            - AI eylemleri (c2pa.created, c2pa.generated)  → +0.10
-            - İmza geçerli (doğrulama başarılı)            → +0.05
+        Aggravating signals (positive evidence of synthesis):
+            - digitalSourceType = trainedAlgorithmicMedia  -> +0.35
+            - digitalSourceType = compositeWithTrained...   -> +0.25
+            - known AI issuer (OpenAI, Google, ...)         -> +0.15
+            - known AI tool (DALL-E, Gemini, ...)           -> +0.15
+            - generative actions (c2pa.created/generated)   -> +0.10
+            - signature validates                           -> +0.05
 
-        Azaltıcı sinyaller (gerçek fotoğraf kanıtları):
-            - Kamera eylemi (c2pa.captured)                → -0.30
-            - İmza doğrulama hatalı                        → -0.10
+        Mitigating signals (evidence of authentic capture):
+            - camera capture action (c2pa.captured)         -> -0.30
+            - signature fails validation                    -> -0.10
 
-        Skor: max(0.0, min(1.0, toplam))
+        Score: max(0.0, min(1.0, total))
         """
         breakdown = {}
         score = 0.40  # C2PA var → baz skor
@@ -957,7 +969,7 @@ class PinA2C2pa(BasePin):
             "contribution": 0.40
         }
 
-        # ── Artırıcı: digitalSourceType ──
+        # ── Aggravating: digitalSourceType ──
         if source_type_analysis["is_ai_source"]:
             category = source_type_analysis["source_category"]
             if category == "ai_generated":
@@ -974,7 +986,7 @@ class PinA2C2pa(BasePin):
                 "contribution": bonus
             }
 
-        # ── Artırıcı: Bilinen AI issuer ──
+        # ── Aggravating: known AI issuer ──
         if creator_info["is_known_ai_issuer"]:
             bonus = 0.15
             score += bonus
@@ -983,7 +995,7 @@ class PinA2C2pa(BasePin):
                 "contribution": bonus
             }
 
-        # ── Artırıcı: Bilinen AI araç ──
+        # ── Aggravating: known AI tool ──
         if tool_info["is_known_ai_tool"]:
             bonus = 0.15
             score += bonus
@@ -992,7 +1004,7 @@ class PinA2C2pa(BasePin):
                 "contribution": bonus
             }
 
-        # ── Artırıcı: AI eylemleri ──
+        # ── Aggravating: generative actions ──
         if action_analysis["has_ai_actions"]:
             bonus = 0.10
             score += bonus
@@ -1001,7 +1013,7 @@ class PinA2C2pa(BasePin):
                 "contribution": bonus
             }
 
-        # ── Artırıcı: İmza geçerli ──
+        # ── Aggravating: signature validates ──
         if validation_info["is_valid"]:
             bonus = 0.05
             score += bonus
@@ -1010,7 +1022,7 @@ class PinA2C2pa(BasePin):
                 "contribution": bonus
             }
 
-        # ── Azaltıcı: Kamera eylemi ──
+        # ── Mitigating: camera capture action ──
         if action_analysis["has_capture_actions"]:
             penalty = -0.30
             score += penalty
@@ -1019,7 +1031,7 @@ class PinA2C2pa(BasePin):
                 "contribution": penalty
             }
 
-        # ── Azaltıcı: İmza doğrulama hatası ──
+        # ── Mitigating: signature validation failure ──
         if not validation_info["is_valid"]:
             penalty = -0.10
             score += penalty
@@ -1028,7 +1040,7 @@ class PinA2C2pa(BasePin):
                 "contribution": penalty
             }
 
-        # Sınırla
+        # Clamp to range
         final_score = round(max(0.0, min(1.0, score)), 4)
 
         breakdown["_total"] = {
@@ -1039,7 +1051,7 @@ class PinA2C2pa(BasePin):
         return final_score, breakdown
 
     def _determine_verdict(self, score: float) -> str:
-        """Skora göre verdict belirler."""
+        """Map the numeric score onto a verdict band."""
         if score >= 0.70:
             return "high_risk"
         elif score >= 0.40:
@@ -1056,12 +1068,12 @@ class PinA2C2pa(BasePin):
                           timestamp_info: dict, action_analysis: dict,
                           source_type_analysis: dict,
                           validation_info: dict) -> str:
-        """Analiz sonucunun Türkçe açıklamasını üretir."""
+        """Produce the natural-language explanation of the analysis."""
         parts = []
 
         parts.append("C2PA CONTENT CREDENTIALS TESPIT EDILDI.")
 
-        # İmzalayan
+        # Signer
         issuer = creator_info.get("issuer", "Bilinmiyor")
         parts.append(f"Imzalayan: {issuer}")
         if creator_info["is_known_ai_issuer"]:
@@ -1069,7 +1081,7 @@ class PinA2C2pa(BasePin):
                 f"  → Bilinen AI uretim kaynagi: {creator_info['matched_issuer_key']}"
             )
 
-        # Araç
+        # Tool
         tool = tool_info.get("claim_generator_parsed") or tool_info.get("claim_generator") or "Bilinmiyor"
         sw_agent = tool_info.get("software_agent")
         parts.append(f"Ureten arac: {tool}")
@@ -1103,7 +1115,7 @@ class PinA2C2pa(BasePin):
                     "  → Kamera/tarama eylemi tespit edildi — gercek icerik sinyali."
                 )
 
-        # İmza doğrulama
+        # Signature validation
         if validation_info["is_valid"]:
             parts.append("Imza dogrulama: GECERLI (kriptografik dogrulama basarili)")
         else:
@@ -1115,7 +1127,7 @@ class PinA2C2pa(BasePin):
         return " | ".join(parts)
 
     def _build_no_c2pa_results(self) -> dict:
-        """C2PA bulunamadığında dönen standart sonuç yapısı."""
+        """Standard result returned when no C2PA manifest is present."""
         return {
             "has_c2pa": False,
             "creator": {

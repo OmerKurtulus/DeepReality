@@ -26,5 +26,8 @@ input/*
 outputs/*
 !outputs/.gitkeep
 
-# ── Proje dışı dosyalar ──
+# ── Environment / credentials ──
+.env
+
+# ── Files outside the project scope ──
 index.html

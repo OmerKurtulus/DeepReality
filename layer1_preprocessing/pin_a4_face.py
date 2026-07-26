@@ -1,28 +1,31 @@
 """
-DeepReality — PIN-A4: Yüz Tespiti & Kırpma (Face Detection & Cropping)
-═══════════════════════════════════════════════════════════════════════
+DeepReality — PIN-A4: Face Detection and Cropping
+=================================================
 
-KATMAN:     Layer 1 — Ön İşlem (Pre-Processing)
-PIN ID:     PIN-A4
-TEKNOLOJİ:  MediaPipe Face Detection (BlazeFace)
+LAYER:       1 — Preprocessing
+PIN ID:      PIN-A4
+TECHNOLOGY:  MediaPipe Face Detection (BlazeFace)
 
-AMAÇ:
-    Görseldeki yüzleri tespit et, kırp, hizala ve normalize et.
-    Sonraki katmanlar (özellikle Layer 2 deepfake detection) için
-    hazır yüz görselleri üret.
+PURPOSE:
+    Detect, crop, align and normalise the faces present in an image so
+    that downstream stages — in particular the Layer 2 detectors —
+    receive consistently framed inputs.
 
-    Bu PIN risk skoru ÜRETMEZ (score = 0.0).
-    Preprocessing PIN'i olarak veri hazırlar, karar vermez.
+    This pin produces NO risk score (score = 0.0). As a preprocessing
+    stage it prepares data; it does not adjudicate. Its findings do,
+    however, determine which failure hypotheses are plausible: face
+    swap and reenactment require a face, whereas a fully synthetic
+    scene need not contain one.
 
-API UYUMLULUĞU:
-    Yeni MediaPipe (≥0.10.8): mp.tasks.vision.FaceDetector
-    Eski MediaPipe (<0.10.8): mp.solutions.face_detection
-    Otomatik seçim — her iki API desteklenir.
+API COMPATIBILITY:
+    MediaPipe >= 0.10.8: mp.tasks.vision.FaceDetector
+    MediaPipe <  0.10.8: mp.solutions.face_detection
+    The available API is selected automatically; both are supported.
 
-ÇIKTI:
-    - face_count:   Tespit edilen yüz sayısı
-    - faces[]:      Her yüz için bbox, landmarks, quality, alignment
-    - face_crops[]: Normalize edilmiş yüz görsel dosya yolları
+OUTPUT:
+    - face_count:   Number of faces detected
+    - faces[]:      Per face: bbox, landmarks, quality, alignment
+    - face_crops[]: Paths of the normalised face images
 """
 
 import cv2
@@ -33,7 +36,7 @@ import logging
 import warnings
 import urllib.request
 
-# MediaPipe / TFLite / protobuf uyarı mesajlarını bastır
+# Suppress MediaPipe / TFLite / protobuf console noise
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["GLOG_minloglevel"] = "3"
 os.environ["MEDIAPIPE_DISABLE_GPU"] = "1"
@@ -75,7 +78,7 @@ try:
 except ImportError:
     FACE_CONFIG = {}
 
-# ── Model dosyası (Tasks API için) ──
+# ── Model file (required by the Tasks API) ──
 MODELS_DIR = PROJECT_ROOT / "models"
 MODEL_FILENAME = "blaze_face_short_range.tflite"
 MODEL_URL = (
@@ -87,24 +90,24 @@ MODEL_URL = (
 
 class PinA4Face(BasePin):
     """
-    PIN-A4: Yüz Tespiti & Kırpma
+    PIN-A4: Face detection and cropping.
 
-    MediaPipe Face Detection (BlazeFace) ile yüzleri tespit eder,
-    kırpar, hizalar ve normalize eder.
+    Detects faces with MediaPipe Face Detection (BlazeFace), then crops,
+    aligns and normalises them.
 
-    İki API desteklenir:
-        - Yeni: mp.tasks.vision.FaceDetector (model dosyası gerekir)
-        - Eski: mp.solutions.face_detection (dahili model)
+    Two APIs are supported:
+        - Modern: mp.tasks.vision.FaceDetector (requires a model file)
+        - Legacy: mp.solutions.face_detection (bundled model)
 
-    Her yüz için:
-        - Bounding box (konum + güvenilirlik)
-        - 6 landmark (gözler, burun, ağız, kulaklar)
-        - Hizalama bilgisi (roll açısı, önden mi?)
-        - Kalite metrikleri (netlik, parlaklık, çözünürlük)
-        - Normalize edilmiş yüz görseli (224×224 PNG)
+    For every face:
+        - Bounding box (position and confidence)
+        - Six landmarks (eyes, nose, mouth, ears)
+        - Alignment data (roll angle, frontal or profile)
+        - Quality metrics (sharpness, brightness, resolution)
+        - Normalised face image (224x224 PNG)
     """
 
-    # Landmark isimleri (her iki API'de aynı sıra)
+    # Landmark names, in the same order across both APIs
     KP_NAMES = [
         "right_eye", "left_eye", "nose_tip",
         "mouth_center", "right_ear", "left_ear"
@@ -125,7 +128,7 @@ class PinA4Face(BasePin):
         self.normalized_size = tuple(cfg.get("normalized_size", [224, 224]))
         self.max_faces = cfg.get("max_faces", 10)
 
-        # Hangi API kullanılacak
+        # Selected API
         self._api_mode = None
         if TASKS_API_AVAILABLE:
             self._api_mode = "tasks"
@@ -133,14 +136,14 @@ class PinA4Face(BasePin):
             self._api_mode = "solutions"
 
     # ═══════════════════════════════════════════════════════════
-    # ANA ANALİZ
+    # MAIN ANALYSIS
     # ═══════════════════════════════════════════════════════════
 
     def analyze(self, file_path: str) -> dict:
-        """Görseldeki yüzleri tespit et, kırp, hizala, normalize et."""
+        """Detect, crop, align and normalise every face in the image."""
         file_path = Path(file_path)
 
-        # ── MediaPipe kontrolü ──
+        # ── MediaPipe availability check ──
         if not MEDIAPIPE_AVAILABLE:
             self.errors.append(
                 "mediapipe kurulu degil. Kurulum: pip install mediapipe"
@@ -159,7 +162,7 @@ class PinA4Face(BasePin):
                 )
             }
 
-        # ── Tasks API model dosyası kontrolü ──
+        # ── Tasks API model file check ──
         if self._api_mode == "tasks":
             model_path = self._ensure_model()
             if model_path is None:
@@ -187,7 +190,7 @@ class PinA4Face(BasePin):
                     )
                 }
 
-        # ── Görsel yükleme ──
+        # ── Image loading ──
         image_bgr = self._load_image(str(file_path))
 
         if image_bgr is None:
@@ -204,14 +207,14 @@ class PinA4Face(BasePin):
 
         h, w = image_bgr.shape[:2]
 
-        # ── Yüz tespiti (API'ye göre) ──
+        # ── Face detection, dispatched by API ──
         if self._api_mode == "tasks":
             raw_detections = self._detect_faces_tasks(image_bgr)
         else:
             image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
             raw_detections = self._detect_faces_solutions(image_rgb)
 
-        # ── Her yüzü işle ──
+        # ── Process each detected face ──
         faces = []
         face_crop_paths = []
 
@@ -232,7 +235,7 @@ class PinA4Face(BasePin):
 
         face_count = len(faces)
 
-        # ── Sonuçlar ──
+        # ── Results ──
         results = {
             "face_count": face_count,
             "has_faces": face_count > 0,
@@ -275,26 +278,26 @@ class PinA4Face(BasePin):
         }
 
     # ═══════════════════════════════════════════════════════════
-    # MODEL YÖNETİMİ (Tasks API)
+    # MODEL MANAGEMENT (Tasks API)
     # ═══════════════════════════════════════════════════════════
 
     def _ensure_model(self) -> Path | None:
         """
-        Model dosyasını kontrol eder, yoksa otomatik indirir.
+        Locate the model file, downloading it if necessary.
 
-        Arama sırası:
+        Search order:
             1. models/blaze_face_short_range.tflite
-            2. Proje kök dizini/blaze_face_short_range.tflite
-            3. Yoksa → otomatik indir
+            2. <project root>/blaze_face_short_range.tflite
+            3. Otherwise, download automatically
         """
         MODELS_DIR.mkdir(exist_ok=True)
 
-        # 1. models/ klasöründe
+        # 1. In the models/ directory
         model_path = MODELS_DIR / MODEL_FILENAME
         if model_path.exists():
             return model_path
 
-        # 2. Proje kök dizininde
+        # 2. In the project root
         root_model = PROJECT_ROOT / MODEL_FILENAME
         if root_model.exists():
             return root_model
@@ -312,11 +315,11 @@ class PinA4Face(BasePin):
         return None
 
     # ═══════════════════════════════════════════════════════════
-    # GÖRSEL YÜKLEME
+    # IMAGE LOADING
     # ═══════════════════════════════════════════════════════════
 
     def _load_image(self, file_path: str) -> np.ndarray | None:
-        """Görseli yükler. HEIC/HEIF desteği PIL üzerinden."""
+        """Load the image; HEIC/HEIF support is provided through PIL."""
         image = cv2.imread(file_path)
         if image is not None:
             return image
@@ -329,13 +332,14 @@ class PinA4Face(BasePin):
             return None
 
     # ═══════════════════════════════════════════════════════════
-    # YÜZ TESPİTİ — TASKS API (Yeni MediaPipe ≥0.10.8)
+    # FACE DETECTION — TASKS API (MediaPipe >= 0.10.8)
     # ═══════════════════════════════════════════════════════════
 
     def _detect_faces_tasks(self, image_bgr: np.ndarray) -> list[dict]:
         """
-        Yeni MediaPipe Tasks API ile yüz tespiti.
-        Model: blaze_face_short_range.tflite gerektirir.
+        Face detection through the modern MediaPipe Tasks API.
+
+        Requires the blaze_face_short_range.tflite model file.
         """
         model_path = self._ensure_model()
         if model_path is None:
@@ -399,13 +403,14 @@ class PinA4Face(BasePin):
             return []
 
     # ═══════════════════════════════════════════════════════════
-    # YÜZ TESPİTİ — SOLUTIONS API (Eski MediaPipe <0.10.8)
+    # FACE DETECTION — SOLUTIONS API (MediaPipe < 0.10.8)
     # ═══════════════════════════════════════════════════════════
 
     def _detect_faces_solutions(self, image_rgb: np.ndarray) -> list[dict]:
         """
-        Eski MediaPipe Solutions API ile yüz tespiti.
-        Dahili model kullanır (indirme gerekmez).
+        Face detection through the legacy MediaPipe Solutions API.
+
+        Uses the bundled model, so no download is required.
         """
         h, w = image_rgb.shape[:2]
         detections = []
@@ -455,7 +460,7 @@ class PinA4Face(BasePin):
         return detections
 
     # ═══════════════════════════════════════════════════════════
-    # TEK YÜZ İŞLEME (API-bağımsız)
+    # SINGLE-FACE PROCESSING (API independent)
     # ═══════════════════════════════════════════════════════════
 
     def _process_face(self, image_bgr: np.ndarray,
@@ -463,12 +468,12 @@ class PinA4Face(BasePin):
                       file_stem: str,
                       img_shape: tuple) -> dict | None:
         """
-        Tek bir yüzü işler:
-            1. Margin ile kırp
-            2. Göz hizalaması yap
-            3. 224×224 normalize et
-            4. Kalite değerlendir
-            5. PNG olarak kaydet
+        Process one detected face:
+            1. Crop with the configured margin
+            2. Align on the eye axis
+            3. Normalise to 224x224
+            4. Evaluate quality
+            5. Write the crop as PNG
         """
         h, w = img_shape
         bbox = detection["bbox"]
@@ -481,7 +486,7 @@ class PinA4Face(BasePin):
         if bw < 20 or bh < 20:
             return None
 
-        # ── Kırpma ──
+        # ── Crop ──
         face_crop = self._crop_with_margin(
             image_bgr, bx, by, bw, bh,
             self.crop_margin, (h, w)
@@ -534,7 +539,7 @@ class PinA4Face(BasePin):
         }
 
     # ═══════════════════════════════════════════════════════════
-    # KIRPMA & HİZALAMA
+    # CROPPING AND ALIGNMENT
     # ═══════════════════════════════════════════════════════════
 
     def _crop_with_margin(self, image: np.ndarray,
@@ -542,7 +547,7 @@ class PinA4Face(BasePin):
                           bw: int, bh: int,
                           margin: float,
                           img_shape: tuple) -> np.ndarray | None:
-        """Yüzü margin ile kırpar."""
+        """Crop the face region with the configured margin."""
         h, w = img_shape
         mx, my = int(bw * margin), int(bh * margin)
         x1 = max(0, bx - mx)
@@ -554,7 +559,7 @@ class PinA4Face(BasePin):
 
     def _compute_alignment(self, left_eye: list,
                            right_eye: list) -> dict:
-        """Göz pozisyonlarından hizalama bilgisi hesaplar."""
+        """Derive alignment data from the detected eye positions."""
         dx = left_eye[0] - right_eye[0]
         dy = left_eye[1] - right_eye[1]
         roll_angle = float(np.degrees(np.arctan2(dy, dx)))
@@ -571,7 +576,7 @@ class PinA4Face(BasePin):
                         bw: int, bh: int,
                         margin: float,
                         img_shape: tuple) -> np.ndarray | None:
-        """Gözlere göre yüzü hizalar ve kırpar."""
+        """Rotate the face onto the eye axis and crop it."""
         h, w = img_shape
         eye_cx = (left_eye[0] + right_eye[0]) / 2.0
         eye_cy = (left_eye[1] + right_eye[1]) / 2.0
@@ -595,13 +600,13 @@ class PinA4Face(BasePin):
         )
 
     # ═══════════════════════════════════════════════════════════
-    # KALİTE DEĞERLENDİRME
+    # QUALITY ASSESSMENT
     # ═══════════════════════════════════════════════════════════
 
     def _assess_quality(self, face_crop: np.ndarray,
                         face_w: int, face_h: int,
                         img_shape: tuple) -> dict:
-        """Yüz kalite metrikleri hesaplar."""
+        """Compute the quality metrics of a face crop."""
         gray = (cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
                 if len(face_crop.shape) == 3 else face_crop)
 

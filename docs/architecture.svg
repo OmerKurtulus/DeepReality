@@ -1,0 +1,214 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5a6a99"/>
+    </marker>
+    <marker id="arFlow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8b9bd0"/>
+    </marker>
+    <linearGradient id="die" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#141a30"/>
+      <stop offset="100%" stop-color="#0e1324"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="900" fill="#0a0e1a"/>
+
+  <!-- ── Title ───────────────────────────────────────────────── -->
+  <text x="800" y="42" text-anchor="middle" fill="#e6edf3" font-size="25" font-weight="600" letter-spacing="0.6">DeepReality — PIN Architecture</text>
+  <text x="800" y="65" text-anchor="middle" fill="#7d8aa8" font-size="13.5" letter-spacing="0.3">Eleven independent analysis pins on one substrate: concurrent where independent, ordered only where evidence flows</text>
+
+  <!-- ── CPU package ─────────────────────────────────────────── -->
+  <rect x="520" y="92" width="560" height="672" rx="16" fill="#12172a" stroke="#2b3252" stroke-width="2"/>
+  <rect x="543" y="115" width="514" height="626" rx="10" fill="url(#die)" stroke="#242c49" stroke-width="1.5"/>
+
+  <!-- package pin teeth: top and bottom (decorative) -->
+  <g fill="#39456e">
+    <rect x="560" y="84" width="9" height="9" rx="2"/><rect x="590" y="84" width="9" height="9" rx="2"/>
+    <rect x="620" y="84" width="9" height="9" rx="2"/><rect x="650" y="84" width="9" height="9" rx="2"/>
+    <rect x="680" y="84" width="9" height="9" rx="2"/><rect x="710" y="84" width="9" height="9" rx="2"/>
+    <rect x="740" y="84" width="9" height="9" rx="2"/><rect x="770" y="84" width="9" height="9" rx="2"/>
+    <rect x="800" y="84" width="9" height="9" rx="2"/><rect x="830" y="84" width="9" height="9" rx="2"/>
+    <rect x="860" y="84" width="9" height="9" rx="2"/><rect x="890" y="84" width="9" height="9" rx="2"/>
+    <rect x="920" y="84" width="9" height="9" rx="2"/><rect x="950" y="84" width="9" height="9" rx="2"/>
+    <rect x="980" y="84" width="9" height="9" rx="2"/><rect x="1010" y="84" width="9" height="9" rx="2"/>
+    <rect x="560" y="763" width="9" height="9" rx="2"/><rect x="590" y="763" width="9" height="9" rx="2"/>
+    <rect x="620" y="763" width="9" height="9" rx="2"/><rect x="650" y="763" width="9" height="9" rx="2"/>
+    <rect x="680" y="763" width="9" height="9" rx="2"/><rect x="710" y="763" width="9" height="9" rx="2"/>
+    <rect x="740" y="763" width="9" height="9" rx="2"/><rect x="770" y="763" width="9" height="9" rx="2"/>
+    <rect x="830" y="763" width="9" height="9" rx="2"/><rect x="860" y="763" width="9" height="9" rx="2"/>
+    <rect x="890" y="763" width="9" height="9" rx="2"/><rect x="920" y="763" width="9" height="9" rx="2"/>
+    <rect x="950" y="763" width="9" height="9" rx="2"/><rect x="980" y="763" width="9" height="9" rx="2"/>
+    <rect x="1010" y="763" width="9" height="9" rx="2"/>
+  </g>
+
+  <!-- signal pin teeth: left and right, aligned to each core row -->
+  <g fill="#4a9eff">
+    <rect x="511" y="185" width="10" height="11" rx="2"/>
+    <rect x="511" y="251" width="10" height="11" rx="2"/>
+    <rect x="1079" y="185" width="10" height="11" rx="2"/>
+    <rect x="1079" y="251" width="10" height="11" rx="2"/>
+  </g>
+  <g fill="#ffa94a">
+    <rect x="511" y="365" width="10" height="11" rx="2"/>
+    <rect x="511" y="431" width="10" height="11" rx="2"/>
+    <rect x="1079" y="365" width="10" height="11" rx="2"/>
+    <rect x="1079" y="431" width="10" height="11" rx="2"/>
+  </g>
+  <g fill="#4ade80">
+    <rect x="511" y="545" width="10" height="11" rx="2"/>
+    <rect x="1079" y="545" width="10" height="11" rx="2"/>
+  </g>
+  <rect x="795" y="763" width="11" height="10" rx="2" fill="#f472b6"/>
+
+  <!-- ══ LAYER 1 band ══════════════════════════════════════════ -->
+  <rect x="556" y="133" width="488" height="180" rx="8" fill="#12233c" stroke="#1f3f66" stroke-width="1.2"/>
+  <text x="570" y="153" fill="#4a9eff" font-size="12" font-weight="700" letter-spacing="1.1">LAYER 1 · PREPROCESSING</text>
+  <text x="1030" y="153" text-anchor="end" fill="#3d6ea8" font-size="10.5" letter-spacing="0.7">CONCURRENT</text>
+
+  <rect x="568" y="162" width="228" height="56" rx="6" fill="#173254" stroke="#3d7ab8" stroke-width="1.3"/>
+  <text x="682" y="185" text-anchor="middle" fill="#dbe7f5" font-size="14.5" font-weight="700">PIN-A1</text>
+  <text x="682" y="203" text-anchor="middle" fill="#7fa8d4" font-size="11">EXIF / Metadata</text>
+
+  <rect x="806" y="162" width="228" height="56" rx="6" fill="#173254" stroke="#3d7ab8" stroke-width="1.3"/>
+  <text x="920" y="185" text-anchor="middle" fill="#dbe7f5" font-size="14.5" font-weight="700">PIN-A3</text>
+  <text x="920" y="203" text-anchor="middle" fill="#7fa8d4" font-size="11">Error Level Analysis</text>
+
+  <rect x="568" y="228" width="228" height="56" rx="6" fill="#173254" stroke="#3d7ab8" stroke-width="1.3"/>
+  <text x="682" y="251" text-anchor="middle" fill="#dbe7f5" font-size="14.5" font-weight="700">PIN-A2</text>
+  <text x="682" y="269" text-anchor="middle" fill="#7fa8d4" font-size="11">C2PA Provenance</text>
+
+  <rect x="806" y="228" width="228" height="56" rx="6" fill="#173254" stroke="#3d7ab8" stroke-width="1.3"/>
+  <text x="920" y="251" text-anchor="middle" fill="#dbe7f5" font-size="14.5" font-weight="700">PIN-A4</text>
+  <text x="920" y="269" text-anchor="middle" fill="#7fa8d4" font-size="11">Face Detection</text>
+
+  <!-- ══ LAYER 2 band ══════════════════════════════════════════ -->
+  <rect x="556" y="313" width="488" height="180" rx="8" fill="#2e2312" stroke="#5c451f" stroke-width="1.2"/>
+  <text x="570" y="333" fill="#ffa94a" font-size="12" font-weight="700" letter-spacing="1.1">LAYER 2 · DETECTION CORE</text>
+  <text x="1030" y="333" text-anchor="end" fill="#a87a3d" font-size="10.5" letter-spacing="0.7">CONCURRENT</text>
+
+  <rect x="568" y="342" width="228" height="56" rx="6" fill="#3d2e17" stroke="#b8853d" stroke-width="1.3"/>
+  <text x="682" y="365" text-anchor="middle" fill="#f5e7db" font-size="14.5" font-weight="700">PIN-B1</text>
+  <text x="682" y="383" text-anchor="middle" fill="#d4a87f" font-size="11">CLIP ViT-L/14</text>
+
+  <rect x="806" y="342" width="228" height="56" rx="6" fill="#3d2e17" stroke="#b8853d" stroke-width="1.3"/>
+  <text x="920" y="365" text-anchor="middle" fill="#f5e7db" font-size="14.5" font-weight="700">PIN-B3</text>
+  <text x="920" y="383" text-anchor="middle" fill="#d4a87f" font-size="11">Frequency CNN</text>
+
+  <rect x="568" y="408" width="228" height="56" rx="6" fill="#3d2e17" stroke="#b8853d" stroke-width="1.3"/>
+  <text x="682" y="431" text-anchor="middle" fill="#f5e7db" font-size="14.5" font-weight="700">PIN-B2</text>
+  <text x="682" y="449" text-anchor="middle" fill="#d4a87f" font-size="11">SigLIP2-base-512</text>
+
+  <rect x="806" y="408" width="228" height="56" rx="6" fill="#3d2e17" stroke="#b8853d" stroke-width="1.3"/>
+  <text x="920" y="431" text-anchor="middle" fill="#f5e7db" font-size="14.5" font-weight="700">PIN-B4</text>
+  <text x="920" y="449" text-anchor="middle" fill="#d4a87f" font-size="11">Independent Core</text>
+
+  <!-- ══ LAYER 4 band ══════════════════════════════════════════ -->
+  <rect x="556" y="493" width="488" height="114" rx="8" fill="#12301f" stroke="#1f5636" stroke-width="1.2"/>
+  <text x="570" y="513" fill="#4ade80" font-size="12" font-weight="700" letter-spacing="1.1">LAYER 4 · EXPLAINABILITY</text>
+  <text x="1030" y="513" text-anchor="end" fill="#3d8a58" font-size="10.5" letter-spacing="0.7">DEPENDS ON B1–B3</text>
+
+  <rect x="568" y="522" width="228" height="56" rx="6" fill="#17422a" stroke="#3da868" stroke-width="1.3"/>
+  <text x="682" y="545" text-anchor="middle" fill="#dbf5e5" font-size="14.5" font-weight="700">PIN-D1</text>
+  <text x="682" y="563" text-anchor="middle" fill="#7fd4a3" font-size="11">Grad-CAM Heatmap</text>
+
+  <rect x="806" y="522" width="228" height="56" rx="6" fill="#17422a" stroke="#3da868" stroke-width="1.3"/>
+  <text x="920" y="545" text-anchor="middle" fill="#dbf5e5" font-size="14.5" font-weight="700">PIN-D2</text>
+  <text x="920" y="563" text-anchor="middle" fill="#7fd4a3" font-size="11">Anomaly Localisation</text>
+
+  <!-- ══ LAYER 5 band ══════════════════════════════════════════ -->
+  <rect x="556" y="607" width="488" height="114" rx="8" fill="#301222" stroke="#5c1f3d" stroke-width="1.2"/>
+  <text x="570" y="627" fill="#f472b6" font-size="12" font-weight="700" letter-spacing="1.1">LAYER 5 · ADJUDICATION</text>
+  <text x="1030" y="627" text-anchor="end" fill="#a83d70" font-size="10.5" letter-spacing="0.7">DEPENDS ON ALL</text>
+
+  <rect x="568" y="636" width="466" height="66" rx="6" fill="#42172e" stroke="#c23d7e" stroke-width="1.5"/>
+  <text x="801" y="662" text-anchor="middle" fill="#f5dbe9" font-size="15.5" font-weight="700">PIN-E1</text>
+  <text x="801" y="683" text-anchor="middle" fill="#e08fbb" font-size="11.5">LLM Reasoning Engine</text>
+
+  <!-- internal dependency flow: L2 → L4 → L5 -->
+  <path d="M 801 470 L 801 490" stroke="#8b9bd0" stroke-width="1.8" fill="none" marker-end="url(#arFlow)" opacity="0.55"/>
+  <path d="M 801 584 L 801 604" stroke="#8b9bd0" stroke-width="1.8" fill="none" marker-end="url(#arFlow)" opacity="0.55"/>
+
+  <!-- ── Leader lines to labels ──────────────────────────────── -->
+  <g stroke="#5a6a99" stroke-width="1.4" fill="none" marker-end="url(#ar)">
+    <path d="M 566 190 L 486 190"/>
+    <path d="M 566 256 L 486 256"/>
+    <path d="M 566 370 L 486 370"/>
+    <path d="M 566 436 L 486 436"/>
+    <path d="M 566 550 L 486 550"/>
+    <path d="M 1036 190 L 1116 190"/>
+    <path d="M 1036 256 L 1116 256"/>
+    <path d="M 1036 370 L 1116 370"/>
+    <path d="M 1036 436 L 1116 436"/>
+    <path d="M 1036 550 L 1116 550"/>
+    <path d="M 801 706 L 801 800"/>
+  </g>
+
+  <!-- ── Left labels ─────────────────────────────────────────── -->
+  <g text-anchor="end">
+    <text x="470" y="182" fill="#dbe7f5" font-size="14.5" font-weight="600">PIN-A1 · EXIF / Metadata Analysis</text>
+    <text x="470" y="201" fill="#8593b5" font-size="12">Generator signatures and capture telemetry</text>
+
+    <text x="470" y="248" fill="#dbe7f5" font-size="14.5" font-weight="600">PIN-A2 · C2PA Provenance</text>
+    <text x="470" y="267" fill="#8593b5" font-size="12">Cryptographically signed content credentials</text>
+
+    <text x="470" y="362" fill="#f5e7db" font-size="14.5" font-weight="600">PIN-B1 · CLIP ViT-L/14</text>
+    <text x="470" y="381" fill="#8593b5" font-size="12">Frozen backbone, LayerNorm tuning —</text>
+    <text x="470" y="397" fill="#8593b5" font-size="12">maximum generalisation to unseen generators</text>
+
+    <text x="470" y="428" fill="#f5e7db" font-size="14.5" font-weight="600">PIN-B2 · SigLIP2-base-512</text>
+    <text x="470" y="447" fill="#8593b5" font-size="12">512×512 input — resolves micro-anomalies</text>
+    <text x="470" y="463" fill="#8593b5" font-size="12">below the resolution of the other detectors</text>
+
+    <text x="470" y="542" fill="#dbf5e5" font-size="14.5" font-weight="600">PIN-D1 · Grad-CAM Heatmap</text>
+    <text x="470" y="561" fill="#8593b5" font-size="12">Recovers the spatial support of each</text>
+    <text x="470" y="577" fill="#8593b5" font-size="12">detector's decision</text>
+  </g>
+
+  <!-- ── Right labels ────────────────────────────────────────── -->
+  <g text-anchor="start">
+    <text x="1130" y="182" fill="#dbe7f5" font-size="14.5" font-weight="600">PIN-A3 · Error Level Analysis</text>
+    <text x="1130" y="201" fill="#8593b5" font-size="12">Recompression anomalies localise editing</text>
+
+    <text x="1130" y="248" fill="#dbe7f5" font-size="14.5" font-weight="600">PIN-A4 · Face Detection</text>
+    <text x="1130" y="267" fill="#8593b5" font-size="12">Alignment and normalisation; establishes</text>
+    <text x="1130" y="283" fill="#8593b5" font-size="12">which failure hypotheses are plausible</text>
+
+    <text x="1130" y="362" fill="#f5e7db" font-size="14.5" font-weight="600">PIN-B3 · Frequency Analysis</text>
+    <text x="1130" y="381" fill="#8593b5" font-size="12">DCT/DWT + CNN — spectral traces of GAN</text>
+    <text x="1130" y="397" fill="#8593b5" font-size="12">and diffusion pipelines, invisible in pixels</text>
+
+    <text x="1130" y="428" fill="#f5e7db" font-size="14.5" font-weight="600">PIN-B4 · Independent Core</text>
+    <text x="1130" y="447" fill="#8593b5" font-size="12">Three-class taxonomy — separates wholly</text>
+    <text x="1130" y="463" fill="#8593b5" font-size="12">synthetic imagery from altered authentic content</text>
+
+    <text x="1130" y="542" fill="#dbf5e5" font-size="14.5" font-weight="600">PIN-D2 · Anomaly Localisation</text>
+    <text x="1130" y="561" fill="#8593b5" font-size="12">Fuses ELA physics with model attention;</text>
+    <text x="1130" y="577" fill="#8593b5" font-size="12">convergence marks corroborated regions</text>
+  </g>
+
+  <!-- ── PIN-E1 label ────────────────────────────────────────── -->
+  <text x="801" y="822" text-anchor="middle" fill="#f5dbe9" font-size="14.5" font-weight="600">PIN-E1 · LLM Reasoning Engine</text>
+  <text x="801" y="841" text-anchor="middle" fill="#8593b5" font-size="12">Synthesises every pin under a forensic evidence hierarchy — documentary provenance outranks statistical inference —</text>
+  <text x="801" y="857" text-anchor="middle" fill="#8593b5" font-size="12">and returns the final verdict, a calibrated confidence and a natural-language justification</text>
+
+  <!-- ── Input node ──────────────────────────────────────────── -->
+  <rect x="120" y="92" width="300" height="52" rx="8" fill="#161b2e" stroke="#2b3252" stroke-width="1.5"/>
+  <text x="270" y="115" text-anchor="middle" fill="#c9d5e8" font-size="13.5" font-weight="600">INPUT</text>
+  <text x="270" y="133" text-anchor="middle" fill="#7d8aa8" font-size="11.5">Image — JPEG · PNG · WebP · HEIC</text>
+  <path d="M 424 118 L 516 118" stroke="#5a6a99" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+
+  <!-- ── Output node ─────────────────────────────────────────── -->
+  <rect x="1180" y="92" width="300" height="52" rx="8" fill="#161b2e" stroke="#2b3252" stroke-width="1.5"/>
+  <text x="1330" y="115" text-anchor="middle" fill="#c9d5e8" font-size="13.5" font-weight="600">OUTPUT</text>
+  <text x="1330" y="133" text-anchor="middle" fill="#7d8aa8" font-size="11.5">Verdict · confidence · heatmaps · report</text>
+  <path d="M 1084 118 L 1176 118" stroke="#5a6a99" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+
+  <!-- ── Footnote ────────────────────────────────────────────── -->
+  <text x="120" y="655" fill="#5a6a99" font-size="11.5">Scheduling is derived from the declared dependency</text>
+  <text x="120" y="672" fill="#5a6a99" font-size="11.5">graph: the eight Layer 1 and Layer 2 pins hold no</text>
+  <text x="120" y="689" fill="#5a6a99" font-size="11.5">mutual dependency and execute concurrently, while</text>
+  <text x="120" y="706" fill="#5a6a99" font-size="11.5">D1, D2 and E1 start the moment their own inputs</text>
+  <text x="120" y="723" fill="#5a6a99" font-size="11.5">are satisfied. A failed pin degrades the evidence</text>
+  <text x="120" y="740" fill="#5a6a99" font-size="11.5">set; it does not halt the pipeline.</text>
+</svg>

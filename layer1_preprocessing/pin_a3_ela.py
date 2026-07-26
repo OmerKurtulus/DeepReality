@@ -1,39 +1,39 @@
 """
-DeepReality — PIN-A3: ELA (Error Level Analysis)
-═════════════════════════════════════════════════
+DeepReality — PIN-A3: Error Level Analysis (ELA)
+================================================
 
-İşlev:
-    Görselin JPEG sıkıştırma seviyesi farklarını analiz ederek
-    manipülasyon bölgelerini ve AI üretim izlerini tespit eder.
+Function:
+    Detects manipulated regions and generative traces by analysing
+    differences in JPEG compression level across the image.
 
-Algoritma:
-    1. Orijinal görseli bilinen bir JPEG kalitesinde (Q=90) yeniden kaydet
-    2. Orijinal ile yeniden kaydedilmiş versiyonu piksel piksel karşılaştır
-    3. Fark haritasını (ELA map) analiz et:
-       a. Global istatistikler (ortalama, standart sapma, max)
-       b. Bölgesel analiz (8×8 grid) — her bölgenin ELA ortalaması
-       c. Uniformity skoru — bölgesel ortalamaların standart sapması
-       d. Hotspot tespiti — anormal yüksek ELA bölgeleri
-    4. ELA heatmap görselini kaydet
+Algorithm:
+    1. Re-save the original at a known JPEG quality (Q=90)
+    2. Compare the original with the re-saved copy pixel by pixel
+    3. Analyse the resulting difference map (the ELA map):
+       a. Global statistics (mean, standard deviation, maximum)
+       b. Regional analysis on an 8x8 grid — per-region ELA mean
+       c. Uniformity score — standard deviation of the regional means
+       d. Anomaly detection — regions with abnormal ELA level
+    4. Write the ELA heatmap image
 
-Yorumlama:
-    - Gerçek fotoğraf:  Doğal ELA varyasyonu, orta uniformity
-    - AI üretim:        Çok uniform ELA (tüm piksel aynı anda üretildi)
-    - Manipüle edilmiş: Düzenlenen bölgelerde belirgin hotspot'lar
+Interpretation:
+    - Authentic photograph: natural ELA variation, moderate uniformity
+    - Generated imagery:    highly uniform ELA (every pixel was produced
+                            in a single synthesis pass)
+    - Manipulated content:  pronounced hotspots over the edited regions
 
-Teknoloji:
-    OpenCV, PIL (Pillow), NumPy
+Technology:
+    OpenCV, Pillow, NumPy
 
-Çıktı:
-    ela_heatmap       : str    — ELA heatmap dosya yolu
-    manipulation_regions: list — Tespit edilen anormal bölgeler
-    uniformity_score  : float  — 0 (çok uniform/AI) → yüksek (doğal)
-    global_stats      : dict   — ELA istatistikleri
-    grid_analysis     : dict   — Bölgesel analiz sonuçları
-    score             : float  — 0.0 (temiz) → 1.0 (manipüle/AI)
+Output:
+    ela_heatmap          : str   — path of the ELA heatmap image
+    manipulation_regions : list  — detected anomalous regions
+    uniformity_score     : float — 0 (highly uniform) to high (natural)
+    global_stats         : dict  — ELA statistics
+    grid_analysis        : dict  — regional analysis results
+    score                : float — 0.0 (clean) to 1.0 (manipulated)
 
-Yazar: DeepReality Ekibi
-Tarih: 2026-02-17
+Author: Omer Faruk Kurtulus
 """
 
 import io
@@ -43,7 +43,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-# HEIC/HEIF desteği (iPhone fotoğrafları)
+# HEIC/HEIF support for iPhone photographs
 try:
     from pillow_heif import register_heif_opener
     register_heif_opener()
@@ -57,9 +57,10 @@ from config.settings import ELA_CONFIG, OUTPUTS_DIR
 
 class PinA3Ela(BasePin):
     """
-    PIN-A3: Error Level Analysis
+    PIN-A3: Error Level Analysis.
 
-    JPEG sıkıştırma farkları ile manipülasyon ve AI üretim tespiti.
+    Detects manipulation and generative traces through differences in
+    JPEG compression level.
     """
 
     def __init__(self):
@@ -80,26 +81,26 @@ class PinA3Ela(BasePin):
         self.save_heatmap = ELA_CONFIG["save_heatmap"]
 
     # ════════════════════════════════════════════════════════════════
-    # ANA ANALİZ
+    # MAIN ANALYSIS
     # ════════════════════════════════════════════════════════════════
 
     def analyze(self, file_path: str) -> dict:
         """
-        ELA analiz pipeline'ı.
+        ELA analysis pipeline.
 
-        Adımlar:
-            1. Görseli yükle + format tespiti
-            2. JPEG Q=90 ile yeniden kaydet (bellekte)
-            3. Piksel farkı hesapla → ELA map
-            4. Global istatistikler
-            5. Bölgesel grid analizi (8×8)
-            6. Uniformity skoru
-            7. Hotspot tespiti
-            8. ELA heatmap kaydet
-            9. Format-bilinçli skorlama
+        Steps:
+            1. Load the image and identify its source format
+            2. Re-save it in memory at JPEG Q=90
+            3. Compute the pixel difference -> ELA map
+            4. Global statistics
+            5. Regional grid analysis (8x8)
+            6. Uniformity score
+            7. Anomaly detection
+            8. Write the ELA heatmap
+            9. Format-aware scoring
         """
 
-        # ── 1. Görseli yükle + format tespiti ──
+        # ── 1. Load the image and identify its format ──
         original = self._load_image(file_path)
         if original is None:
             return {
@@ -109,7 +110,7 @@ class PinA3Ela(BasePin):
                 "details": "Gorsel yuklenemedi veya desteklenmeyen format."
             }
 
-        # Format tespiti — ELA güvenilirliği için kritik
+        # Format identification is critical to ELA reliability
         source_format = self._detect_source_format(file_path)
 
         # ── 2-3. ELA map hesapla ──
@@ -125,7 +126,7 @@ class PinA3Ela(BasePin):
         # ── 4. Global istatistikler ──
         global_stats = self._compute_global_stats(ela_map)
 
-        # ── 5. Bölgesel grid analizi ──
+        # ── 5. Regional grid analysis ──
         grid_analysis = self._compute_grid_analysis(ela_map)
 
         # ── 6. Uniformity skoru ──
@@ -141,7 +142,7 @@ class PinA3Ela(BasePin):
                 ela_map, Path(file_path).stem
             )
 
-        # ── 9. Format-bilinçli skorlama ──
+        # ── 9. Format-aware scoring ──
         score, score_breakdown = self._calculate_score(
             global_stats=global_stats,
             uniformity=uniformity,
@@ -149,7 +150,7 @@ class PinA3Ela(BasePin):
             source_format=source_format
         )
 
-        # Sinyal güvenilirliği kontrolü — yetersizse verdict=no_data
+        # Signal reliability check: insufficient signal yields verdict=no_data
         is_reliable = score_breakdown.get("signal_reliability", {}).get(
             "is_reliable", True
         )
@@ -197,11 +198,11 @@ class PinA3Ela(BasePin):
     # ════════════════════════════════════════════════════════════════
 
     def _load_image(self, file_path: str) -> np.ndarray | None:
-        """Görseli OpenCV formatında yükler (BGR)."""
+        """Load the image in OpenCV (BGR) form."""
         try:
             img = cv2.imread(file_path, cv2.IMREAD_COLOR)
             if img is None:
-                # OpenCV bazen Unicode path'lerde başarısız olur
+                # OpenCV occasionally fails on Unicode paths
                 # PIL ile dene
                 pil_img = Image.open(file_path).convert("RGB")
                 img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
@@ -212,40 +213,42 @@ class PinA3Ela(BasePin):
 
     def _detect_source_format(self, file_path: str) -> dict:
         """
-        Görselin kaynak formatını ve sıkıştırma türünü tespit eder.
+        Identify the source format and its compression class.
 
-        ELA için kritik olan JPEG vs PNG değil, LOSSY vs LOSSLESS ayrımıdır:
+        What matters for ELA is not JPEG versus PNG but LOSSY versus
+        LOSSLESS:
 
-        LOSSY formatlar (sıkıştırma geçmişi VAR):
-            - JPEG (.jpg/.jpeg) — DCT tabanlı kayıplı sıkıştırma
-            - HEIC/HEIF (.heic/.heif) — HEVC tabanlı kayıplı sıkıştırma
-            - WebP lossy (.webp) — VP8 tabanlı kayıplı sıkıştırma
-            → ELA uniformity sinyali GÜVENİLİR
-            → Farklı alanlar farklı sıkıştırılmış → doğal varyasyon
+        LOSSY formats (a compression history EXISTS):
+            - JPEG (.jpg/.jpeg)      — DCT-based lossy compression
+            - HEIC/HEIF              — HEVC-based lossy compression
+            - WebP lossy (.webp)     — VP8-based lossy compression
+            -> the ELA uniformity signal is RELIABLE
+            -> different areas were compressed differently, producing
+               natural variation
 
-        LOSSLESS formatlar (sıkıştırma geçmişi YOK):
-            - PNG (.png) — kayıpsız
-            - BMP (.bmp) — sıkıştırmasız
-            - TIFF (.tiff/.tif) — genelde kayıpsız
-            - GIF (.gif) — palette-based
-            → ELA uniformity sinyali GÜVENİLMEZ
-            → Hiç lossy sıkıştırma geçmişi yok
-            → Gerçek foto ve AI görseli benzer uniform ELA verir
+        LOSSLESS formats (NO compression history):
+            - PNG (.png)             — lossless
+            - BMP (.bmp)             — uncompressed
+            - TIFF (.tiff/.tif)      — usually lossless
+            - GIF (.gif)             — palette based
+            -> the ELA uniformity signal is UNRELIABLE
+            -> with no lossy history, authentic and generated images
+               both yield similarly uniform ELA
 
-        NOT: iPhone fotoğrafları HEIC formatındadır. HEIC kayıplı (lossy)
-        sıkıştırma kullanır, bu yüzden ELA doğru çalışır. Ancak HEIC→PNG
-        dönüştürülürse sıkıştırma geçmişi silinir ve ELA güvenilmez olur.
+        Note: iPhone photographs are stored as HEIC, which is lossy, so
+        ELA behaves correctly on them. Converting HEIC to PNG, however,
+        erases the compression history and renders ELA unreliable.
         """
         ext = Path(file_path).suffix.lower()
 
-        # Lossy formatlar — sıkıştırma geçmişi var
+        # Lossy formats — compression history present
         lossy_formats = {
             ".jpg", ".jpeg", ".jpe", ".jfif",  # JPEG
             ".heic", ".heif",                    # HEIC (iPhone)
             ".webp",                             # WebP (genelde lossy)
         }
 
-        # Lossless formatlar — sıkıştırma geçmişi yok
+        # Lossless formats — no compression history
         lossless_formats = {
             ".png",          # PNG
             ".bmp",          # BMP
@@ -281,42 +284,42 @@ class PinA3Ela(BasePin):
 
     def _compute_ela_map(self, original: np.ndarray) -> np.ndarray | None:
         """
-        ELA map hesaplar.
+        Compute the ELA map.
 
-        Algoritma:
-            1. Orijinali JPEG Q=90 olarak bellekte yeniden kaydet
-            2. Yeniden kaydedilmiş versiyonu yükle
-            3. Piksel piksel mutlak fark hesapla
-            4. Farkı amplifikasyon çarpanı ile büyüt
+        Algorithm:
+            1. Re-save the original in memory as JPEG Q=90
+            2. Load the re-saved copy
+            3. Compute the absolute per-pixel difference
+            4. Scale the difference by the amplification factor
 
         Returns:
-            ELA map (grayscale, 0-255) veya None (hata durumunda)
+            The ELA map (grayscale, 0-255), or None on failure.
         """
         try:
-            # PIL Image'a dönüştür (JPEG kaydetme için)
+            # Convert to a PIL image for JPEG encoding
             original_rgb = cv2.cvtColor(original, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(original_rgb)
 
-            # Bellekte JPEG olarak yeniden kaydet
+            # Re-encode as JPEG in memory
             buffer = io.BytesIO()
             pil_image.save(buffer, format="JPEG", quality=self.resave_quality)
             buffer.seek(0)
 
-            # Yeniden kaydedilmiş versiyonu yükle
+            # Load the re-encoded copy
             resaved = Image.open(buffer)
             resaved_np = np.array(resaved).astype(np.float64)
             original_float = original_rgb.astype(np.float64)
 
-            # Piksel farkı hesapla (her kanal için)
+            # Per-channel pixel difference
             diff = np.abs(original_float - resaved_np)
 
-            # Kanalları birleştir (ortalama) → grayscale ELA
+            # Collapse the channels to a grayscale ELA map
             ela_gray = np.mean(diff, axis=2)
 
-            # Amplifikasyon — küçük farkları görünür yap
+            # Amplify so that small differences become visible
             ela_amplified = ela_gray * self.amp_scale
 
-            # 0-255 arasına sınırla
+            # Clamp to the 0-255 range
             ela_map = np.clip(ela_amplified, 0, 255).astype(np.uint8)
 
             return ela_map
@@ -326,19 +329,20 @@ class PinA3Ela(BasePin):
             return None
 
     # ════════════════════════════════════════════════════════════════
-    # İSTATİSTİKSEL ANALİZ
+    # STATISTICAL ANALYSIS
     # ════════════════════════════════════════════════════════════════
 
     def _compute_global_stats(self, ela_map: np.ndarray) -> dict:
         """
-        ELA map'in global istatistiklerini hesaplar.
+        Compute global statistics over the ELA map.
 
-        Önemli metrikler:
-            - mean: Ortalama ELA değeri (düşük=çok sıkıştırılmış, yüksek=yeni)
-            - std: Standart sapma (düşük=uniform, yüksek=çeşitli)
-            - max: Maksimum ELA piksel değeri
-            - skewness: Çarpıklık (pozitif=sağa çarpık, negatif=sola çarpık)
-            - energy: Toplam enerji (kareler toplamı / piksel sayısı)
+        Key metrics:
+            - mean:     average ELA level (low = heavily compressed,
+                        high = recently written)
+            - std:      standard deviation (low = uniform, high = varied)
+            - max:      maximum ELA pixel value
+            - skewness: distribution asymmetry
+            - energy:   total energy (sum of squares per pixel)
         """
         flat = ela_map.flatten().astype(np.float64)
 
@@ -348,16 +352,16 @@ class PinA3Ela(BasePin):
         min_val = float(np.min(flat))
         median = float(np.median(flat))
 
-        # Çarpıklık (skewness) — dağılımın şekli
+        # Skewness — shape of the distribution
         if std > 0:
             skewness = float(np.mean(((flat - mean) / std) ** 3))
         else:
             skewness = 0.0
 
-        # Enerji — toplam ELA yoğunluğu
+        # Energy — overall ELA intensity
         energy = float(np.mean(flat ** 2))
 
-        # Yüzdelikler (percentiles)
+        # Percentiles
         p25 = float(np.percentile(flat, 25))
         p75 = float(np.percentile(flat, 75))
         p95 = float(np.percentile(flat, 95))
@@ -379,16 +383,17 @@ class PinA3Ela(BasePin):
 
     def _compute_grid_analysis(self, ela_map: np.ndarray) -> list[dict]:
         """
-        ELA map'i NxN grid'e bölerek bölgesel analiz yapar.
+        Partition the ELA map into an N x N grid and analyse each cell.
 
-        Her bölge için:
-            - mean: Ortalama ELA değeri
-            - std: Standart sapma
-            - max: Maksimum değer
-            - position: (row, col) grid konumu
+        Per region:
+            - mean:     average ELA level
+            - std:      standard deviation
+            - max:      maximum value
+            - position: (row, col) within the grid
 
-        Bu analiz manipüle edilmiş bölgelerin tespitinde kritik:
-        Düzenlenmiş bölgeler farklı ELA seviyesi gösterir.
+        This regional view is what makes localisation possible: an
+        edited area exhibits a different ELA level from its
+        surroundings, which is invisible in the global statistics.
         """
         h, w = ela_map.shape
         grid_h = h // self.grid_size
@@ -420,21 +425,21 @@ class PinA3Ela(BasePin):
 
     def _compute_uniformity(self, grid_analysis: list[dict]) -> dict:
         """
-        Bölgesel ELA değerlerinin ne kadar uniform olduğunu hesaplar.
+        Measure how uniform the regional ELA values are.
 
-        Uniformity skoru = bölgesel ortalamaların standart sapması
+        Uniformity score = standard deviation of the regional means.
 
-        AI üretimi görseller çok uniform ELA gösterir çünkü:
-        - Tüm pikseller aynı anda, aynı model tarafından üretilir
-        - Doğal sıkıştırma varyasyonu yoktur
-        - Her bölgenin ELA seviyesi birbirine çok yakındır
+        Generated images tend towards highly uniform ELA because:
+        - every pixel is produced at once by the same model
+        - there is no natural compression variation
+        - the ELA level of each region closely matches the others
 
-        Gerçek fotoğraflar doğal varyasyon gösterir:
-        - Farklı doku alanları (gökyüzü, ağaç, bina) farklı ELA verir
-        - Kenarlar ve düz alanlar farklı sıkıştırılır
+        Authentic photographs exhibit natural variation:
+        - different textures (sky, foliage, masonry) yield different ELA
+        - edges and flat areas compress differently
 
-        Manipüle edilmiş görseller yüksek varyasyon gösterir:
-        - Düzenlenen bölgeler belirgin şekilde farklı ELA verir
+        Manipulated images exhibit high variation:
+        - edited regions produce a markedly different ELA level
         """
         region_means = [r["mean"] for r in grid_analysis]
         region_stds = [r["std"] for r in grid_analysis]
@@ -443,7 +448,7 @@ class PinA3Ela(BasePin):
         mean_of_means = float(np.mean(region_means))
         std_of_stds = float(np.std(region_stds))
 
-        # Coefficient of variation (CV) — normalize edilmiş varyasyon
+        # Coefficient of variation — normalised dispersion
         cv = (uniformity_score / mean_of_means * 100) if mean_of_means > 0 else 0.0
 
         # Kategori belirle
@@ -473,35 +478,35 @@ class PinA3Ela(BasePin):
     def _detect_hotspots(self, grid_analysis: list[dict],
                          global_stats: dict) -> list[dict]:
         """
-        ELA map'te anormal bölgeleri tespit eder — İKİ YÖNLÜ.
+        Detect anomalous regions in the ELA map, in BOTH directions.
 
-        HOTSPOT (yüksek ELA):
-            Yeni eklenen / taze içerik → henüz sıkıştırılmamış
-            → JPEG re-save'de büyük fark üretir → yüksek ELA
+        HOTSPOT (elevated ELA):
+            Newly inserted content that has not yet been compressed.
+            The JPEG re-save produces a large difference, hence high ELA.
 
-        COLDSPOT (düşük ELA):
-            Ağır sıkıştırılmış / farklı kaliteden yapıştırılmış içerik
-            → Detayını zaten kaybetmiş → re-save'de az fark üretir
-            → Çevresinden belirgin şekilde düşük ELA
+        COLDSPOT (suppressed ELA):
+            Heavily compressed content pasted in from a lower-quality
+            source. Having already lost its detail, it changes little on
+            re-save and therefore sits well below its surroundings.
 
-        TEKNİK: MAD (Median Absolute Deviation) tabanlı robust tespit.
-        MAD outlier'lara karşı dayanıklıdır.
+        Method: robust detection based on the Median Absolute Deviation,
+        which is resistant to the outliers the anomalies themselves
+        introduce:
 
-            median = bölgesel ortalamaların medyanı
-            MAD = median(|her_bölge - median|)
-            robust_std = MAD × 1.4826
-            hotspot:  bölge_mean > median + k_hot × robust_std
-            coldspot: bölge_mean < median - k_cold × robust_std
-                      VE (median - bölge_mean) ≥ min_absolute_deviation
+            median     = median of the regional means
+            MAD        = median(|region - median|)
+            robust_std = MAD * 1.4826
+            hotspot:   region_mean > median + k_hot  * robust_std
+            coldspot:  region_mean < median - k_cold * robust_std
+                       AND (median - region_mean) >= min_absolute_deviation
 
-        COLDSPOT İÇİN EK KONTROL:
-            Sadece istatistiksel sapma (σ) yetmez.
-            Uniform görsellerde MAD çok küçük olunca doğal
-            varyasyon (pürüzsüz cilt, gökyüzü) coldspot olarak
-            tetiklenebilir. Minimum absolute fark kontrolü ile
-            doğal düşük-ELA bölgeleri filtrelenir:
-              - Cilt vs arka plan: ~10-15 birim fark → DOĞAL
-              - Gerçek manipülasyon: ~40-50 birim fark → COLDSPOT
+        Additional constraint for coldspots:
+            A statistical deviation alone is insufficient. On uniform
+            images the MAD becomes very small, so natural variation
+            (smooth skin, open sky) can cross the sigma threshold. The
+            minimum absolute difference check filters those out:
+              - skin versus background: ~10-15 units -> NATURAL
+              - genuine manipulation:   ~40-50 units -> COLDSPOT
         """
         region_means = np.array([r["mean"] for r in grid_analysis])
 
@@ -511,7 +516,7 @@ class PinA3Ela(BasePin):
         mad = max(mad, 0.5)  # Minimum MAD
         robust_std = mad * 1.4826
 
-        # Eşikler — hotspot ve coldspot için AYRI
+        # Separate thresholds for hotspots and coldspots
         high_threshold = median_val + (self.hotspot_std * robust_std)
         low_threshold = median_val - (self.coldspot_std * robust_std)
 
@@ -520,7 +525,7 @@ class PinA3Ela(BasePin):
             mean_val = region["mean"]
 
             if mean_val > high_threshold:
-                # HOTSPOT — taze / eklenen içerik
+                # HOTSPOT — freshly inserted content
                 deviation = (mean_val - median_val) / robust_std
                 anomalies.append({
                     "type": "hotspot",
@@ -540,15 +545,15 @@ class PinA3Ela(BasePin):
                 })
 
             elif mean_val < low_threshold:
-                # COLDSPOT adayı — ek kontrol gerekli
+                # Coldspot candidate — requires the additional check
                 absolute_diff = median_val - mean_val
 
-                # Minimum absolute fark kontrolü:
-                # Doğal düşük-ELA bölgeleri (cilt, gökyüzü)
-                # genelde median'dan 10-15 birim düşük.
-                # Gerçek manipülasyon 40+ birim fark üretir.
+                # Minimum absolute difference check:
+                # naturally low-ELA regions (skin, sky) usually sit only
+                # 10-15 units below the median, whereas genuine
+                # manipulation produces a gap of 40 units or more.
                 if absolute_diff < self.coldspot_min_abs:
-                    continue  # Doğal varyasyon — atla
+                    continue  # Natural variation — skip
 
                 deviation = absolute_diff / robust_std
                 anomalies.append({
@@ -579,10 +584,10 @@ class PinA3Ela(BasePin):
     def _save_ela_heatmap(self, ela_map: np.ndarray,
                           file_stem: str) -> Path | None:
         """
-        ELA map'i renkli heatmap olarak kaydeder.
+        Write the ELA map as a colour heatmap.
 
-        Colormap: JET (mavi=düşük ELA, kırmızı=yüksek ELA)
-        Çıktı: outputs/{dosya_adı}_ELA_heatmap.png
+        Colormap: JET (blue = low ELA, red = high ELA)
+        Output:   outputs/{stem}_ELA_heatmap.png
         """
         try:
             # OpenCV colormap uygula
@@ -606,35 +611,40 @@ class PinA3Ela(BasePin):
                          hotspots: list[dict],
                          source_format: dict = None) -> tuple[float, dict]:
         """
-        ELA analizinden skor hesaplar.
+        Derive the pin score from the ELA analysis.
 
-        ÖNEMLİ TASARIM KARARI:
-        ═══════════════════════
-        ELA uniformity tek başına AI/gerçek AYIRT EDEMEZ.
+        KEY DESIGN DECISION
+        -------------------
+        ELA uniformity ALONE cannot separate generated from authentic
+        imagery.
 
-        Neden?
-        - iPhone hesaplamalı fotoğrafçılık → gerçek foto uniform ELA verir
-        - Modern AI (GPT-4o, Imagen 3) → gerçekçi doku, doğal ELA varyasyonu
-        - Hem PNG hem lossy formatlarda aynı sorun var
+        Why:
+        - iPhone computational photography makes authentic photographs
+          produce uniform ELA
+        - modern generators (GPT-4o, Imagen 3) synthesise realistic
+          texture with natural ELA variation
+        - the problem is present in both lossy and lossless formats
 
-        Bu yüzden:
-        1. UNIFORMITY → ZAYIF destekleyici sinyal (max 0.25)
-           Tek başına karar verici DEĞİL. Layer 6'da diğer PIN'lerle birleşir.
-        2. HOTSPOT → GÜÇLÜ manipülasyon sinyali (max 0.85)
-           ELA'nın asıl gücü budur. Format bağımsız çalışır.
+        Therefore:
+        1. UNIFORMITY -> WEAK supporting signal (capped at 0.25).
+           Never decisive on its own; it is combined with the other
+           pins at the adjudication and ensemble stages.
+        2. ANOMALIES  -> STRONG manipulation signal (capped at 0.85).
+           This is the real strength of ELA and it is format agnostic.
 
-        FORMAT CEZASI YOK — çünkü hem AI hem gerçek foto
-        her formatta olabilir. Bunu bilemeyiz.
+        NO FORMAT PENALTY is applied, because both authentic and
+        generated images occur in every format; the format alone
+        carries no information about provenance.
         """
         breakdown = {}
         global_mean = global_stats["mean"]
         global_std = global_stats["std"]
 
-        # Format bilgisi (sadece raporlama için, skor etkilemez)
+        # Format information, reported but not scored
         comp_type = source_format.get("compression_type", "unknown") if source_format else "unknown"
 
         # ═══════════════════════════════════════════════
-        # ADIM 0: SİNYAL GÜVENİLİRLİĞİ KONTROLÜ
+        # STEP 0: SIGNAL RELIABILITY CHECK
         # ═══════════════════════════════════════════════
 
         signal_reliable = True
@@ -673,9 +683,9 @@ class PinA3Ela(BasePin):
             return 0.0, breakdown
 
         # ═══════════════════════════════════════════════
-        # ADIM 1: UNIFORMITY SİNYALİ
-        # Zayıf destekleyici sinyal — max 0.25
-        # Tek başına karar verici DEĞİL
+        # STEP 1: UNIFORMITY SIGNAL
+        # Weak supporting signal — capped at 0.25
+        # NOT decisive on its own
         # ═══════════════════════════════════════════════
         u_score = uniformity["uniformity_score"]
         u_cat = uniformity["category"]
@@ -708,11 +718,11 @@ class PinA3Ela(BasePin):
         }
 
         # ═══════════════════════════════════════════════
-        # ADIM 2: ANOMALİ SİNYALİ (manipülasyon tespiti)
-        # Hotspot (yüksek ELA) + Coldspot (düşük ELA)
-        # ELA'nın asıl gücü — format bağımsız
+        # STEP 2: ANOMALY SIGNAL (manipulation detection)
+        # Hotspots (elevated ELA) and coldspots (suppressed ELA)
+        # The real strength of ELA — independent of format
         # ═══════════════════════════════════════════════
-        anomaly_count = len(hotspots)  # hotspots artık tüm anomalileri içerir
+        anomaly_count = len(hotspots)  # hotspots now holds every anomaly type
         total_regions = self.grid_size * self.grid_size
         anomaly_ratio = anomaly_count / total_regions if total_regions > 0 else 0
 
@@ -722,13 +732,13 @@ class PinA3Ela(BasePin):
         if anomaly_count == 0:
             hotspot_signal = 0.0
         elif anomaly_ratio < 0.05:
-            hotspot_signal = 0.50  # Az — lokalize manipülasyon
+            hotspot_signal = 0.50  # Few — localised manipulation
         elif anomaly_ratio < 0.15:
-            hotspot_signal = 0.70  # Orta — belirgin manipülasyon
+            hotspot_signal = 0.70  # Moderate — pronounced manipulation
         elif anomaly_ratio < 0.30:
-            hotspot_signal = 0.60  # Çok — genel düzenleme
+            hotspot_signal = 0.60  # Many — wholesale editing
         else:
-            hotspot_signal = 0.40  # Yaygın — farklı sıkıştırma
+            hotspot_signal = 0.40  # Widespread — differing compression
 
         high_severity = sum(1 for h in hotspots if h.get("severity") == "high")
         if high_severity > 0:
@@ -757,15 +767,15 @@ class PinA3Ela(BasePin):
         }
 
         # ═══════════════════════════════════════════════
-        # NİHAİ SKOR
+        # FINAL SCORE
         # Hotspot varsa → hotspot dominant
-        # Hotspot yoksa → sadece zayıf uniformity
+        # No anomalies -> weak uniformity signal only
         # ═══════════════════════════════════════════════
         if hotspot_signal > 0:
-            # Manipülasyon tespit edildi → hotspot + uniformity bonus
+            # Manipulation detected -> anomaly signal plus uniformity bonus
             final_score = hotspot_signal + (uniformity_signal * 0.3)
         else:
-            # Manipülasyon yok → sadece zayıf uniformity sinyali
+            # No manipulation -> weak uniformity signal only
             final_score = uniformity_signal
 
         final_score = round(max(0.0, min(1.0, final_score)), 4)
@@ -784,7 +794,7 @@ class PinA3Ela(BasePin):
         return final_score, breakdown
 
     def _determine_verdict(self, score: float) -> str:
-        """Skora göre verdict belirler."""
+        """Map the numeric score onto a verdict band."""
         if score >= 0.70:
             return "high_risk"
         elif score >= 0.40:
@@ -800,7 +810,7 @@ class PinA3Ela(BasePin):
                           global_stats: dict, uniformity: dict,
                           hotspots: list[dict],
                           source_format: dict = None) -> str:
-        """Analiz sonucunun Türkçe açıklamasını üretir."""
+        """Produce the natural-language explanation of the analysis."""
         parts = []
 
         fmt_ext = source_format.get("file_extension", "?") if source_format else "?"
@@ -813,7 +823,7 @@ class PinA3Ela(BasePin):
             f"std={global_stats['std']:.1f}, max={global_stats['max']:.1f}."
         )
 
-        # Sinyal güvenilirliği
+        # Signal reliability
         g_mean = global_stats["mean"]
         g_std = global_stats["std"]
         if g_mean < 1.0 and g_std < 1.0:
@@ -873,7 +883,7 @@ class PinA3Ela(BasePin):
         return " | ".join(parts)
 
     def _build_empty_results(self, reason: str) -> dict:
-        """Hata durumunda dönen boş sonuç."""
+        """Empty result returned when the analysis cannot proceed."""
         return {
             "ela_heatmap": None,
             "global_stats": None,

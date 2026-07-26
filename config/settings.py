@@ -1,6 +1,10 @@
 """
 DeepReality — Global Configuration
-Tüm pinlerin kullandığı ortak ayarlar, eşik değerler ve yollar.
+Shared settings, thresholds and paths used by every pin in the system.
+
+All tunable parameters (weights, thresholds, model paths, prompts
+configuration) live here so that no decision constant is hard-coded
+inside pin implementations.
 """
 
 import os
@@ -13,11 +17,42 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 OUTPUTS_DIR.mkdir(exist_ok=True)
 
+
+# ──────────────────────────────────────────────
+# ENVIRONMENT (.env loader)
+# ──────────────────────────────────────────────
+def _load_dotenv(path: Path = PROJECT_ROOT / ".env") -> None:
+    """
+    Minimal .env reader (no external dependency).
+
+    Parses KEY=VALUE lines, ignores comments and blank lines, and strips
+    optional surrounding quotes. Existing environment variables always
+    take precedence, so a shell-exported key overrides the file.
+    """
+    if not path.exists():
+        return
+
+    try:
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except OSError:
+        pass  # An unreadable .env must never break the pipeline
+
+
+_load_dotenv()
+
 # ──────────────────────────────────────────────
 # PIN-A1: Metadata Analysis Thresholds
 # ──────────────────────────────────────────────
 METADATA_CONFIG = {
-    # AI aracı metadata imzaları — her yeni araç keşfedildiğinde buraya ekle
+    # Generator metadata signatures — extend as new tools are identified
     "ai_tool_signatures": {
         # Stable Diffusion ailesi
         "stable_diffusion": {
@@ -67,7 +102,7 @@ METADATA_CONFIG = {
         }
     },
 
-    # Kamera EXIF alanları — bu alanlar VARSA gerçek fotoğraf olma olasılığı artar
+    # Camera EXIF fields — their PRESENCE raises the likelihood of authentic capture
     "camera_fields": [
         "Make", "Model", "LensModel", "LensMake",
         "FocalLength", "FNumber", "ExposureTime",
@@ -76,7 +111,7 @@ METADATA_CONFIG = {
         "MeteringMode", "WhiteBalance"
     ],
 
-    # GPS alanları — gerçek fotoğraf kanıtı
+    # GPS fields — evidence of a physical exposure event
     "gps_fields": [
         "GPSLatitude", "GPSLongitude", "GPSAltitude",
         "GPSLatitudeRef", "GPSLongitudeRef",
@@ -84,8 +119,8 @@ METADATA_CONFIG = {
     ],
 
     # ── C2PA / JUMBF Binary Markers ──
-    # ChatGPT, DALL-E, Sora gibi araçlar dosyaya C2PA metadata gömer.
-    # Dosyanın binary içeriğinde bu byte pattern'ları aranır.
+    # Tools such as ChatGPT, DALL-E and Sora embed C2PA metadata in the file.
+    # These byte patterns are searched for in the raw container.
     "c2pa_binary_markers": [
         b"jumb",                    # JUMBF box marker
         b"c2pa",                    # C2PA manifest label
@@ -108,8 +143,8 @@ METADATA_CONFIG = {
     },
 
     # ── AI Dimension Heuristic ──
-    # AI araçları belirli boyutlarda çıktı verir (64'ün katları, kare, vb.)
-    # Bu boyutlar kesin kanıt DEĞİL ama ek sinyal üretir.
+    # Generators emit characteristic output sizes (multiples of 64, squares).
+    # These dimensions are NOT proof, but they contribute an additional signal.
     "ai_typical_dimensions": [
         (256, 256), (512, 512), (768, 768),
         (1024, 1024), (1536, 1536), (2048, 2048),
@@ -126,22 +161,22 @@ METADATA_CONFIG = {
 
     # Scoring weights (toplam = 1.0)
     "weights": {
-        "ai_signature_detected": 0.30,   # Metadata'da AI imzası
+        "ai_signature_detected": 0.30,   # Generator signature present in metadata
         "c2pa_detected": 0.25,           # C2PA/JUMBF binary marker bulundu
         "no_camera_data": 0.12,          # Kamera verisi yok
         "no_gps_data": 0.03,             # GPS yok
         "no_datetime": 0.07,             # Tarih bilgisi yok
-        "software_suspicious": 0.08,     # Yazılım alanı şüpheli
-        "metadata_stripped": 0.05,       # Metadata tamamen silinmiş
-        "ai_dimensions": 0.05,           # AI tipik boyutları
-        "compression_anomaly": 0.05      # Sıkıştırma oranı anomalisi
+        "software_suspicious": 0.08,     # Software field looks suspicious
+        "metadata_stripped": 0.05,       # Metadata entirely stripped
+        "ai_dimensions": 0.05,           # Dimensions typical of generators
+        "compression_anomaly": 0.05      # Compression ratio anomaly
     },
 
     # Verdict thresholds
     "thresholds": {
-        "high_risk": 0.70,      # ≥ 0.70 → Yüksek AI üretimi şüphesi
-        "medium_risk": 0.40,    # ≥ 0.40 → Orta şüphe
-        "low_risk": 0.0         # < 0.40 → Düşük şüphe / muhtemelen gerçek
+        "high_risk": 0.70,      # >= 0.70 -> strong suspicion of AI generation
+        "medium_risk": 0.40,    # >= 0.40 -> moderate suspicion
+        "low_risk": 0.0         # <  0.40 -> weak suspicion / probably authentic
     }
 }
 
@@ -149,46 +184,46 @@ METADATA_CONFIG = {
 # PIN-A3: ELA (Error Level Analysis) Configuration
 # ──────────────────────────────────────────────
 ELA_CONFIG = {
-    # JPEG yeniden kaydetme kalitesi (ELA referansı)
-    # Düşük = daha fazla fark görünür, Yüksek = daha hassas analiz
+    # JPEG re-save quality used as the ELA reference
+    # Lower = larger visible differences, higher = finer discrimination
     "resave_quality": 90,
 
-    # ELA fark amplifikasyonu (görselleştirme için)
-    # Piksel farkları küçük olduğundan görünürlük için çarpan
+    # ELA difference amplification (for visualisation)
+    # Pixel differences are small, so they are scaled up to be visible
     "amplification_scale": 20,
 
-    # Bölgesel analiz ızgara boyutu (grid NxN)
+    # Regional analysis grid size (N x N)
     "grid_size": 8,
 
-    # Anomali tespit eşiği (MAD tabanlı, robust)
-    # Bölgesel ELA ortalamasının median'dan kaç robust σ sapma
-    # göstermesi gerektiği.
+    # Anomaly detection threshold (MAD-based, robust to outliers)
+    # How many robust sigma a regional ELA mean must deviate from the
+    # median to be flagged.
     "hotspot_std_threshold": 3.0,
 
-    # Coldspot için ayrı σ eşiği
-    # Coldspot'lar doğal içerik varyasyonuna (cilt, gökyüzü)
-    # daha hassas olduğu için hotspot'tan yüksek tutulur.
+    # Separate sigma threshold for coldspots
+    # Coldspots are more sensitive to natural content variation (skin, sky),
+    # so their threshold is set higher than for hotspots.
     "coldspot_std_threshold": 3.5,
 
-    # Coldspot minimum absolute ELA farkı
-    # Bir bölgenin coldspot sayılabilmesi için median'dan
-    # EN AZ bu kadar ELA birimi düşük olması gerekir.
-    # Bu, doğal düşük-ELA bölgelerini (pürüzsüz cilt, gökyüzü)
-    # gerçek manipülasyondan ayırır.
+    # Minimum absolute ELA difference for a coldspot
+    # A region must sit at least this many ELA units below the median
+    # before it can be classified as a coldspot.
+    # This separates naturally low-ELA regions (smooth skin, sky) from
+    # genuine manipulation.
     #
-    # Doğal varyasyon:  cilt vs arka plan ≈ 10-15 birim fark
-    # Gerçek manipülasyon: Q40 patch ≈ 40-50 birim fark
-    # Eşik 20: doğal varyasyonu filtreler, manipülasyonu yakalar
+    # Natural variation:     skin vs background ~ 10-15 units
+    # Genuine manipulation:  Q40 patch         ~ 40-50 units
+    # A threshold of 20 filters the former while retaining the latter
     "coldspot_min_absolute_deviation": 20.0,
 
-    # Uniformity eşikleri (AI tespiti için)
-    # Bölgesel ortalamaların standart sapması
-    # Düşük = uniform (AI üretimi), Yüksek = doğal varyasyon
+    # Uniformity thresholds (AI-generation signal)
+    # Standard deviation of the regional means
+    # Low = uniform (typical of generated imagery), high = natural variation
     "uniformity_thresholds": {
-        "very_uniform": 3.0,    # < 3.0 → çok uniform (AI sinyali)
-        "uniform": 6.0,         # < 6.0 → uniform (olası AI)
+        "very_uniform": 3.0,    # < 3.0  -> highly uniform (AI signal)
+        "uniform": 6.0,         # < 6.0  -> uniform (possibly AI)
         "moderate": 12.0,       # < 12.0 → orta (belirsiz)
-        # > 12.0 → yüksek varyasyon (gerçek veya manipüle)
+        # > 12.0 -> high variation (authentic or manipulated)
     },
 
     # ELA heatmap kaydetme
@@ -204,15 +239,15 @@ OUTPUT_SCHEMA_VERSION = "1.0.0"
 # PIN-A2: C2PA Provenance Configuration
 # ──────────────────────────────────────────────
 C2PA_CONFIG = {
-    # AI üretim dijital kaynak tipleri (IPTC standardı)
-    # Bu değerler C2PA assertion'larında digitalSourceType olarak geçer
+    # IPTC digital source types denoting AI generation
+    # These appear as digitalSourceType in C2PA assertions
     "ai_digital_source_types": [
         "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia",
         "http://cv.iptc.org/newscodes/digitalsourcetype/algorithmicMedia",
         "http://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia",
     ],
 
-    # Bilinen AI üretim araçları (C2PA issuer veya softwareAgent olarak görünür)
+    # Known generative tools (appear as C2PA issuer or softwareAgent)
     "known_ai_issuers": {
         "OpenAI": "openai",
         "Google": "google_ai",
@@ -230,19 +265,19 @@ C2PA_CONFIG = {
         "Microsoft Designer", "Copilot",
     ],
 
-    # AI olmayan eylemler (kamera, tarayıcı vb.)
+    # Non-AI actions (camera capture, scanning)
     "non_ai_actions": [
-        "c2pa.captured",       # Kamerayla çekilmiş
-        "c2pa.scanned",        # Taranmış
+        "c2pa.captured",       # Captured with a camera
+        "c2pa.scanned",        # Scanned
     ],
 
-    # AI üretim eylemleri
+    # Generative actions
     "ai_creation_actions": [
-        "c2pa.created",        # Oluşturulmuş (AI olabilir)
-        "c2pa.generated",      # Üretilmiş
+        "c2pa.created",        # Created (may be AI)
+        "c2pa.generated",      # Generated
     ],
 
-    # Düzenleme eylemleri (AI ile düzenlenmiş olabilir)
+    # Editing actions (may indicate AI-assisted editing)
     "edit_actions": [
         "c2pa.edited",
         "c2pa.drawing",
@@ -257,29 +292,29 @@ C2PA_CONFIG = {
 # PIN-A4: Face Detection & Cropping
 # ──────────────────────────────────────────────
 FACE_CONFIG = {
-    # MediaPipe model seçimi
-    # 0 = kısa mesafe (≤2m, selfie kamerası)
-    # 1 = tam menzil (≤5m, genel fotoğraflar)
+    # MediaPipe model selection
+    # 0 = short range (<= 2 m, selfie camera)
+    # 1 = full range (<= 5 m, general photography)
     "model_selection": 1,
 
-    # Minimum yüz tespit güvenilirliği (0.0 - 1.0)
-    # Düşük = daha fazla yüz ama false positive riski
-    # Yüksek = daha az yüz ama daha güvenilir
+    # Minimum face detection confidence (0.0 - 1.0)
+    # Lower = more faces detected, higher false-positive rate
+    # Higher = fewer faces, greater reliability
     "min_detection_confidence": 0.5,
 
-    # Yüz kırpma marjini (yüz boyutunun yüzdesi)
-    # 0.30 = her yönde %30 ekstra alan
-    # Çok az margin → yüz kenarları kesilebilir
-    # Çok fazla margin → arka plan gürültüsü artar
+    # Face crop margin (as a fraction of face size)
+    # 0.30 = 30 percent additional area on every side
+    # Too little margin -> facial boundaries are clipped
+    # Too much margin   -> background noise increases
     "crop_margin": 0.30,
 
-    # Normalize edilmiş yüz boyutu [genişlik, yükseklik]
+    # Normalised face size [width, height]
     # 224×224: Standart CNN/ViT input boyutu
-    # Layer 2 modelleri (CLIP, SigLIP2) bu boyutu bekler
+    # The Layer 2 models (CLIP, SigLIP2) expect this resolution
     "normalized_size": [224, 224],
 
-    # Maksimum tespit edilecek yüz sayısı
-    # Performans ve bellek yönetimi için sınır
+    # Maximum number of faces to detect
+    # Bounded for runtime and memory predictability
     "max_faces": 10,
 }
 
@@ -287,19 +322,19 @@ FACE_CONFIG = {
 # PIN-B1: CLIP ViT-L/14 Deepfake Detection
 # ──────────────────────────────────────────────
 CLIP_CONFIG = {
-    # HuggingFace model adı (mimari iskeleti yüklemek için)
+    # HuggingFace identifier used to instantiate the architecture
     "clip_model_name": "openai/clip-vit-large-patch14",
 
-    # Eğitilmiş model ağırlıkları dosya yolu
+    # Path to the trained weights
     "model_path": str(PROJECT_ROOT / "models" / "pin_b1_clip_ln_tune_final.pt"),
 
-    # Sınıf sayısı
+    # Number of classes
     "num_labels": 2,
 
-    # Etiket haritası
+    # Label map
     "label_map": {0: "fake", 1: "real"},
 
-    # Verdict eşikleri (0.0=real, 1.0=fake)
+    # Verdict thresholds (0.0 = real, 1.0 = fake)
     "thresholds": {
         "high_risk": 0.70,
         "medium_risk": 0.40,
@@ -310,19 +345,19 @@ CLIP_CONFIG = {
 # PIN-B2: SigLIP2-base-512 Deepfake Detection
 # ──────────────────────────────────────────────
 SIGLIP_CONFIG = {
-    # HuggingFace model adı (mimari iskeleti yüklemek için)
+    # HuggingFace identifier used to instantiate the architecture
     "model_name": "google/siglip2-base-patch16-512",
 
-    # Eğitilmiş model ağırlıkları dosya yolu
+    # Path to the trained weights
     "model_path": str(PROJECT_ROOT / "models" / "pin_b2_siglip2_finetune_final.pt"),
 
-    # Sınıf sayısı
+    # Number of classes
     "num_labels": 2,
 
-    # Etiket haritası
+    # Label map
     "label_map": {0: "fake", 1: "real"},
 
-    # Verdict eşikleri (0.0=real, 1.0=fake)
+    # Verdict thresholds (0.0 = real, 1.0 = fake)
     "thresholds": {
         "high_risk": 0.70,
         "medium_risk": 0.40,
@@ -333,21 +368,21 @@ SIGLIP_CONFIG = {
 # PIN-B3: Frequency Analysis (DCT/DWT + CNN)
 # ──────────────────────────────────────────────
 FREQ_CONFIG = {
-    # Eğitilmiş model ağırlıkları dosya yolu
+    # Path to the trained weights
     "model_path": str(PROJECT_ROOT / "models" / "pin_b3_freq_cnn_final.pt"),
 
-    # Sınıf sayısı
+    # Number of classes
     "num_labels": 2,
 
-    # Frekans dönüşüm parametreleri
-    "freq_image_size": 224,           # Frekans haritası boyutu
+    # Frequency transform parameters
+    "freq_image_size": 224,           # Frequency map resolution
     "dwt_wavelet": "haar",            # DWT wavelet ailesi
     "num_channels": 4,                # DCT + DWT-LH + DWT-HL + DWT-HH
 
-    # Etiket haritası
+    # Label map
     "label_map": {0: "fake", 1: "real"},
 
-    # Verdict eşikleri (0.0=real, 1.0=fake)
+    # Verdict thresholds (0.0 = real, 1.0 = fake)
     "thresholds": {
         "high_risk": 0.70,
         "medium_risk": 0.40,
@@ -359,19 +394,19 @@ FREQ_CONFIG = {
 # ──────────────────────────────────────────────
 INDEPENDENT_CORE_CONFIG = {
     # Local model dizini (HuggingFace'den indirilen dosyalar)
-    # İçinde: config.json, preprocessor_config.json, model.safetensors
+    # Contains: config.json, preprocessor_config.json, model.safetensors
     "model_dir": str(PROJECT_ROOT / "models" / "pin_b4_ai_deepfake_real"),
 
     # Kaynak bilgisi
     "source": "prithivMLmods/AI-vs-Deepfake-vs-Real-Siglip2",
     "base_model": "google/siglip2-base-patch16-224",
 
-    # Sınıf sayısı ve etiket haritası
+    # Class count and label map
     "num_labels": 3,
     "label_map": {0: "AI", 1: "Deepfake", 2: "Real"},
 
-    # Verdict eşikleri (fake_score = ai_prob + deepfake_prob)
-    # 0.0 = kesinlikle gerçek, 1.0 = kesinlikle fake/AI
+    # Verdict thresholds (fake_score = ai_prob + deepfake_prob)
+    # 0.0 = certainly authentic, 1.0 = certainly synthetic
     "thresholds": {
         "high_risk": 0.70,
         "medium_risk": 0.40,
@@ -379,50 +414,104 @@ INDEPENDENT_CORE_CONFIG = {
 }
 
 # ──────────────────────────────────────────────
-# KATMAN 4 — XAI (Açıklanabilirlik Pinleri)
+# LAYER 4 — XAI (EXPLAINABILITY PINS)
 # PIN-D1: Grad-CAM Heatmap | PIN-D2: Anomaly Localization
 # ──────────────────────────────────────────────
 XAI_CONFIG = {
     # ── PIN-D1: Grad-CAM ──
-    # Hangi sınıfın kanıtı görselleştirilsin?
-    # "fake" → modelin "sahtelik" kanıtını gösterir (logit index 0)
+    # Which class should the evidence be visualised for?
+    # "fake" -> shows the model's evidence for synthesis (logit index 0)
     "target_class": "fake",
     "fake_logit_index": 0,
 
-    # Heatmap görselleştirme
+    # Heatmap rendering
     "cam_colormap": "jet",       # OpenCV colormap
-    "overlay_alpha": 0.45,       # Isı haritası saydamlığı (0-1)
+    "overlay_alpha": 0.45,       # Heatmap opacity (0-1)
 
-    # Odak bölgesi çıkarımı: normalize cam >= bu eşik olan alanlar
+    # Focus region extraction: areas where normalised CAM >= this threshold
     "focus_threshold": 0.60,
-    # Görüntü alanının bu oranından küçük odak bölgeleri gürültü sayılır
+    # Focus regions below this fraction of the frame are treated as noise
     "min_region_area_ratio": 0.001,
     "max_regions": 12,
 
-    # Birleşik (combined) heatmap ağırlıkları
-    # Frekans CAM'i uzamsal olarak yaklaşık olduğundan düşük ağırlıklı
+    # Combined heatmap weights
+    # The frequency CAM is only spatially approximate, hence a lower weight
     "combine_weights": {"clip": 0.40, "siglip": 0.40, "freq": 0.20},
 
-    # ── PIN-D2: Anomaly Localization (ELA + Grad-CAM füzyonu) ──
+    # ── PIN-D2: Anomaly Localisation (ELA + Grad-CAM fusion) ──
     "fusion": {
-        # Grad-CAM binary maskesi için quantile eşiği (üst %15)
+        # Quantile threshold for the Grad-CAM binary mask (top 15 percent)
         "cam_quantile": 0.85,
-        # Bir ELA bölgesinin CAM ile "doğrulanmış" sayılması için
-        # bölge içi ortalama normalize CAM değeri eşiği
+        # Mean normalised CAM activation required inside an ELA region
+        # before that region counts as corroborated
         "ela_cam_confirm_threshold": 0.50,
     },
 
-    # ── PIN-D2 kanıt skorlaması (destekleyici sinyal) ──
-    # Skor fake olasılığı DEĞİL, "lokalize manipülasyon kanıtı" gücüdür
+    # ── PIN-D2 evidence scoring (supporting signal) ──
+    # This score is NOT a fake probability; it is the strength of
     "evidence_scores": {
-        "fused_region": 0.80,        # ELA + CAM aynı bölgeyi işaretledi
-        "ela_high_only": 0.55,       # Sadece yüksek şiddetli ELA anomalisi
-        "ela_low_only": 0.35,        # Sadece düşük/orta ELA anomalisi
-        "cam_focus_only": 0.30,      # Sadece güçlü CAM konsantrasyonu
-        "none": 0.05,                # Lokalize kanıt yok
+        "fused_region": 0.80,        # ELA and Grad-CAM marked the same region
+        "ela_high_only": 0.55,       # High-severity ELA anomaly only
+        "ela_low_only": 0.35,        # Low or moderate ELA anomaly only
+        "cam_focus_only": 0.30,      # Strong CAM concentration only
+        "none": 0.05,                # No localised evidence
     },
     "thresholds": {
         "high_risk": 0.70,
         "medium_risk": 0.40,
     },
+}
+# ──────────────────────────────────────────────
+# LAYER 5 — LLM REASONING ENGINE
+# PIN-E1: synthesises every upstream pin into a final adjudication
+# ──────────────────────────────────────────────
+LLM_CONFIG = {
+    # ── Provider (OpenAI-compatible chat completions API) ──
+    # OpenRouter is the default gateway; any compatible endpoint works.
+    "api_base": os.environ.get(
+        "DEEPREALITY_LLM_API_BASE",
+        "https://openrouter.ai/api/v1",
+    ),
+    "api_key_env": "OPENROUTER_API_KEY",
+    "model": os.environ.get(
+        "DEEPREALITY_LLM_MODEL",
+        "anthropic/claude-sonnet-4.5",
+    ),
+
+    # ── Request parameters ──
+    # Temperature is kept low: forensic adjudication must be reproducible.
+    "temperature": 0.15,
+    "max_tokens": 1600,
+    "timeout_seconds": 90,
+    "max_retries": 2,
+    "retry_backoff_seconds": 2.0,
+
+    # Optional attribution headers honoured by OpenRouter
+    "referer": "https://github.com/OmerKurtulus/DeepReality",
+    "app_title": "DeepReality",
+
+    # ── Output ──
+    # Natural-language report language (ISO 639-1). Turkish is the
+    # project default; the reasoning process itself is language agnostic.
+    "output_language": "tr",
+
+    # ── Evidence packaging ──
+    # High-dimensional embeddings and static model cards are stripped
+    # from the digest; they carry no adjudication value and would
+    # otherwise dominate the token budget.
+    "digest": {
+        "max_ela_regions": 6,
+        "max_focus_regions": 4,
+        "max_marked_regions": 6,
+        "float_precision": 3,
+    },
+
+    # ── Verdict thresholds applied to the returned fake probability ──
+    "thresholds": {
+        "high_risk": 0.70,
+        "medium_risk": 0.40,
+    },
+
+    # Persist the exact prompt payload alongside the result for auditability
+    "save_prompt_transcript": True,
 }

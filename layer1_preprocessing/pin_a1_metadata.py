@@ -1,24 +1,30 @@
 """
-DeepReality — PIN-A1: EXIF / Metadata Analizi
-═══════════════════════════════════════════════
+DeepReality — PIN-A1: EXIF / Metadata Analysis
+==============================================
 
-İşlev:
-    Görselin metadata bilgilerini çıkarır ve analiz eder.
-    AI üretim araçlarının bıraktığı metadata izlerini tespit eder.
-    Kamera, GPS, tarih bilgisi varlığını kontrol ederek
-    görselin gerçek mi yoksa yapay mı üretildiğine dair sinyal üretir.
+Function:
+    Extracts and analyses the metadata layers of an image, detecting
+    the traces generative tools leave behind and assessing whether
+    camera, GPS and timestamp information is present.
 
-Teknoloji:
+    The governing principle is evidential asymmetry: the PRESENCE of
+    coherent capture telemetry is strong evidence of authentic capture,
+    whereas its ABSENCE is weak evidence of anything, since virtually
+    every social platform strips metadata on upload.
+
+Technology:
     Pillow (PIL), struct (binary EXIF parsing)
 
-Çıktı:
+Output:
     metadata_score (0.0-1.0), source_tool, extracted_metadata, signals
 
-Mantık:
-    - AI aracı imzası bulunursa → yüksek skor (yapay üretim şüphesi)
-    - Kamera verisi yoksa → orta sinyal
-    - Metadata tamamen boşsa → şüpheli (kasıtlı silinmiş olabilir)
-    - Kamera + GPS + tarih varsa → düşük skor (muhtemelen gerçek fotoğraf)
+Reasoning:
+    - generator signature found      -> high score (synthesis suspected)
+    - no camera data                 -> moderate signal
+    - metadata entirely absent       -> mildly suspicious (possibly stripped)
+    - camera + GPS + timestamp       -> low score (probably authentic)
+
+Author: Omer Faruk Kurtulus
 """
 
 import struct
@@ -29,7 +35,7 @@ from typing import Optional
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 
-# Projenin kök dizinini Python path'e ekle
+# Make the project root importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.base_pin import BasePin
@@ -38,15 +44,16 @@ from config.settings import METADATA_CONFIG
 
 class PinA1Metadata(BasePin):
     """
-    PIN-A1: EXIF/Metadata Analizi
+    PIN-A1: EXIF / metadata analysis.
 
-    Görselin tüm metadata katmanlarını tarar:
-    1. Standart EXIF verileri (kamera, lens, ayarlar)
-    2. GPS koordinatları
-    3. Yazılım / araç bilgisi
-    4. AI üretim aracı imzaları (SD, MJ, DALL-E, Firefly, vb.)
-    5. XMP / IPTC embedded text içinde AI pattern arama
-    6. Metadata bütünlük analizi (tamamen silinmiş mi?)
+    Scans every metadata layer of the image:
+    1. Standard EXIF data (camera, lens, exposure settings)
+    2. GPS coordinates
+    3. Software and tool fields
+    4. Generator signatures (Stable Diffusion, Midjourney, DALL-E,
+       Firefly and others)
+    5. AI patterns embedded in XMP / IPTC text
+    6. Metadata completeness analysis (was it stripped?)
     """
 
     def __init__(self):
@@ -66,7 +73,8 @@ class PinA1Metadata(BasePin):
 
     def analyze(self, file_path: str) -> dict:
         """
-        Ana analiz metodu. Görselin metadata'sını çıkarır ve değerlendirir.
+        Main analysis entry point: extract and evaluate the image
+        metadata.
         """
         file_path = Path(file_path)
 
@@ -102,15 +110,15 @@ class PinA1Metadata(BasePin):
         # ── 4. Verdict ─────────────────────────────────────────────
         verdict = self._determine_verdict(score)
 
-        # ── 5. Türkçe Açıklama ─────────────────────────────────────
+        # ── 5. Natural-language explanation ─────────────────────────
         details = self._generate_details(
             score, verdict, ai_detection, c2pa_detection, camera_analysis,
             gps_analysis, software_analysis, metadata_completeness,
             dimension_analysis, compression_analysis
         )
 
-        # ── 6. Sonuç Paketi ────────────────────────────────────────
-        # source_tool: C2PA issuer varsa onu kullan, yoksa AI signature
+        # ── 6. Result package ──────────────────────────────────────
+        # source_tool: prefer the C2PA issuer, else the AI signature
         source_tool = (
             c2pa_detection.get("issuer_tool") or
             ai_detection.get("detected_tool") or
@@ -149,7 +157,7 @@ class PinA1Metadata(BasePin):
     # ════════════════════════════════════════════════════════════════
 
     def _extract_basic_info(self, file_path: Path) -> dict:
-        """Temel görsel bilgilerini çıkarır (format, boyut, mod)."""
+        """Extract basic image properties (format, dimensions, mode)."""
         try:
             with Image.open(file_path) as img:
                 return {
@@ -166,8 +174,8 @@ class PinA1Metadata(BasePin):
 
     def _extract_exif(self, file_path: Path) -> dict:
         """
-        Pillow ile EXIF verilerini çıkarır.
-        GPS ve IFD alt etiketlerini de çözümler.
+        Extract EXIF data with Pillow, resolving the GPS and IFD
+        sub-tag blocks as well.
         """
         exif_data = {}
         try:
@@ -176,19 +184,19 @@ class PinA1Metadata(BasePin):
                 if not raw_exif:
                     return exif_data
 
-                # Ana EXIF etiketlerini çözümle
+                # Resolve the primary EXIF tags
                 for tag_id, value in raw_exif.items():
                     tag_name = TAGS.get(tag_id, f"Unknown_{tag_id}")
                     exif_data[tag_name] = self._safe_value(value)
 
-                # IFD (Sub-EXIF) bloklarını çözümle
+                # Resolve the IFD (sub-EXIF) blocks
                 for ifd_id in raw_exif.get_ifd(0x8769) or {}:
                     tag_name = TAGS.get(ifd_id, f"ExifIFD_{ifd_id}")
                     value = raw_exif.get_ifd(0x8769).get(ifd_id)
                     if value is not None:
                         exif_data[tag_name] = self._safe_value(value)
 
-                # GPS IFD bloğunu çözümle
+                # Resolve the GPS IFD block
                 gps_ifd = raw_exif.get_ifd(0x8825)
                 if gps_ifd:
                     for gps_tag_id, value in gps_ifd.items():
@@ -208,9 +216,12 @@ class PinA1Metadata(BasePin):
 
     def _extract_raw_text(self, file_path: Path) -> list[str]:
         """
-        Dosyanın binary içeriğinden okunabilir metin parçalarını çıkarır.
-        XMP, IPTC, tEXt chunk'ları ve gömülü prompt'ları yakalar.
-        PNG tEXt, iTXt chunk'ları ve JPEG COM/APP segmentlerini okur.
+        Extract readable text fragments from the raw container.
+
+        Captures XMP, IPTC, tEXt chunks and embedded prompts by reading
+        PNG tEXt/iTXt chunks and JPEG COM/APP segments. Generators
+        frequently record their parameters here even when the standard
+        EXIF block is empty.
         """
         text_chunks = []
         try:
@@ -276,27 +287,29 @@ class PinA1Metadata(BasePin):
 
     def _detect_ai_signatures(self, exif_data: dict, raw_text_chunks: list[str]) -> dict:
         """
-        Metadata ve raw text içinde AI üretim aracı imzalarını arar.
-        Birden fazla araç bulunursa en yüksek güvenilirlikli olanı seçer.
+        Search the metadata and raw text for generator signatures.
+
+        When several tools match, the one with the highest confidence is
+        selected.
         """
         detections = []
 
-        # Tüm aranacak metinleri birleştir (küçük harfe çevir)
+        # Concatenate every searchable text, lowercased
         searchable_texts = []
 
-        # EXIF alanlarından
+        # From the EXIF fields
         for key, value in exif_data.items():
             if isinstance(value, str):
                 searchable_texts.append(value.lower())
 
-        # Raw text chunk'larından
+        # From the raw text chunks
         for chunk in raw_text_chunks:
             if isinstance(chunk, str):
                 searchable_texts.append(chunk.lower())
 
         combined_text = " ||| ".join(searchable_texts)
 
-        # Her AI aracının imzalarını kontrol et
+        # Test the signatures of each generative tool
         for tool_name, signatures in self.ai_signatures.items():
             confidence = 0.0
             matched_patterns = []
@@ -307,9 +320,9 @@ class PinA1Metadata(BasePin):
                     confidence = max(confidence, 0.95)
                     matched_patterns.append(f"software: '{pattern}'")
 
-            # Parameter fields (Stable Diffusion özel)
+            # Parameter fields (specific to Stable Diffusion)
             for field in signatures.get("parameter_fields", []):
-                # EXIF key olarak kontrol
+                # Check as an EXIF key
                 if field.lower() in [k.lower() for k in exif_data.keys()]:
                     confidence = max(confidence, 0.98)
                     matched_patterns.append(f"param_field: '{field}'")
@@ -343,7 +356,7 @@ class PinA1Metadata(BasePin):
                     "matched_patterns": matched_patterns
                 })
 
-        # Sonuçları güvenilirliğe göre sırala
+        # Order the matches by confidence
         detections.sort(key=lambda x: x["confidence"], reverse=True)
 
         if detections:
@@ -365,7 +378,7 @@ class PinA1Metadata(BasePin):
             }
 
     def _analyze_camera_data(self, exif_data: dict) -> dict:
-        """Kamera bilgisi varlığını analiz eder."""
+        """Analyse the presence of camera telemetry."""
         found_fields = []
         for field in self.camera_fields:
             if field in exif_data and exif_data[field]:
@@ -394,13 +407,13 @@ class PinA1Metadata(BasePin):
         }
 
     def _analyze_gps_data(self, exif_data: dict) -> dict:
-        """GPS koordinat bilgisi varlığını kontrol eder."""
+        """Check for GPS coordinate data."""
         found_gps = []
         for field in self.gps_fields:
             if field in exif_data and exif_data[field]:
                 found_gps.append(field)
 
-        has_gps = len(found_gps) >= 2  # En az lat+lon olmalı
+        has_gps = len(found_gps) >= 2  # Latitude and longitude are both required
 
         coords = {}
         if has_gps:
@@ -423,7 +436,7 @@ class PinA1Metadata(BasePin):
         }
 
     def _analyze_datetime(self, exif_data: dict) -> dict:
-        """Tarih/zaman bilgisi varlığını kontrol eder."""
+        """Check for date and time information."""
         datetime_fields = [
             "DateTime", "DateTimeOriginal", "DateTimeDigitized",
             "CreateDate", "ModifyDate"
@@ -440,15 +453,15 @@ class PinA1Metadata(BasePin):
 
     def _analyze_software_field(self, exif_data: dict) -> dict:
         """
-        Software/ProcessingSoftware alanını analiz eder.
-        Fotoğraf düzenleme vs AI üretim ayrımı yapar.
+        Analyse the Software / ProcessingSoftware fields, separating
+        conventional photo editing from generative authoring.
         """
         software = exif_data.get("Software", "") or ""
         processing = exif_data.get("ProcessingSoftware", "") or ""
         creator_tool = exif_data.get("info_CreatorTool", "") or ""
         combined = f"{software} {processing} {creator_tool}".strip().lower()
 
-        # Bilinen fotoğraf düzenleme yazılımları (şüpheli DEĞİL)
+        # Known photo-editing software (NOT suspicious on its own)
         known_editors = [
             "adobe photoshop", "lightroom", "capture one",
             "gimp", "affinity photo", "darktable", "rawtherapee", "picasa",
@@ -458,7 +471,7 @@ class PinA1Metadata(BasePin):
 
         is_known_editor = any(editor in combined for editor in known_editors)
 
-        # AI içerik düzenleme özellikleri (şüpheli)
+        # Generative editing features (suspicious)
         ai_edit_features = [
             "generative fill", "neural filters", "ai enhance",
             "ai upscale", "super resolution", "content-aware"
@@ -474,15 +487,18 @@ class PinA1Metadata(BasePin):
 
     def _analyze_metadata_completeness(self, exif_data: dict) -> dict:
         """
-        Metadata'nın ne kadar dolu olduğunu analiz eder.
-        Tamamen boş metadata şüphelidir (kasıtlı silinmiş olabilir).
+        Assess how complete the metadata is.
+
+        Entirely empty metadata is mildly suspicious, since it may have
+        been deliberately stripped — though it is equally consistent
+        with a routine platform upload, so this signal is weighted low.
         """
         total_fields = len(exif_data)
 
-        # info_ prefix'li alanları say (PNG tEXt, JPEG COM vb.)
+        # Count info_-prefixed fields (PNG tEXt, JPEG COM and similar)
         info_fields = sum(1 for k in exif_data if k.startswith("info_"))
 
-        # Standart EXIF alanları
+        # Standard EXIF fields
         standard_fields = total_fields - info_fields
 
         if total_fields == 0:
@@ -504,10 +520,16 @@ class PinA1Metadata(BasePin):
 
     def _detect_c2pa_binary(self, file_path: Path) -> dict:
         """
-        Dosyanın binary içeriğinde C2PA/JUMBF marker'larını arar.
-        ChatGPT, DALL-E, Sora gibi araçlar bu marker'ları gömer.
-        Metadata tamamen silinmiş görünen dosyalarda bile
-        C2PA binary izleri kalabilir.
+        Search the raw container for C2PA/JUMBF markers.
+
+        Tools such as ChatGPT, DALL-E and Sora embed these markers.
+        Because they live in the container rather than the EXIF block,
+        they frequently survive in files whose metadata otherwise
+        appears to have been stripped.
+
+        This is a heuristic scan. PIN-A2 performs the authoritative
+        cryptographic parse; findings here corroborate rather than
+        supersede it.
         """
         found_markers = []
         issuer_tool = None
@@ -517,7 +539,7 @@ class PinA1Metadata(BasePin):
             with open(file_path, "rb") as f:
                 raw = f.read()
 
-            # C2PA marker'larını ara
+            # Search for the C2PA markers
             for marker in self.c2pa_markers:
                 idx = raw.find(marker)
                 if idx != -1:
@@ -526,17 +548,17 @@ class PinA1Metadata(BasePin):
                         "offset": idx
                     })
 
-            # C2PA issuer'ını tespit et (OpenAI, Adobe, vb.)
+            # Identify the C2PA issuer (OpenAI, Adobe and others)
             for issuer_bytes, tool_name in self.c2pa_issuers.items():
                 if issuer_bytes in raw:
                     issuer_tool = tool_name
                     break
 
-            # Güvenilirlik hesapla
+            # Derive the confidence
             if found_markers:
                 # Temel marker bulundu
                 confidence = min(0.60 + len(found_markers) * 0.08, 0.98)
-                # Issuer da tespit edildiyse güvenilirlik artır
+                # Raise the confidence when the issuer is also identified
                 if issuer_tool:
                     confidence = min(confidence + 0.15, 0.99)
 
@@ -553,9 +575,12 @@ class PinA1Metadata(BasePin):
 
     def _analyze_dimensions(self, basic_info: dict) -> dict:
         """
-        Görsel boyutlarının AI üretim araçlarının tipik çıktı boyutlarıyla
-        eşleşip eşleşmediğini kontrol eder.
-        AI araçları genelde 64'ün katı, kare veya belirli oranlar üretir.
+        Test whether the image dimensions match the characteristic
+        output sizes of generative tools, which typically emit squares
+        or multiples of 64.
+
+        This is a weak corroborating signal, never decisive on its own:
+        authentic images are routinely cropped to these dimensions too.
         """
         width = basic_info.get("width", 0)
         height = basic_info.get("height", 0)
@@ -563,10 +588,10 @@ class PinA1Metadata(BasePin):
         if width == 0 or height == 0:
             return {"is_ai_dimension": False, "details": "Boyut bilgisi yok"}
 
-        # Tam eşleşme kontrolü
+        # Exact-match test
         exact_match = (width, height) in self.ai_dimensions
 
-        # 64'ün katı mı? (AI modelleri 64 veya 8'in katlarında çalışır)
+        # Multiple of 64? (generative models operate on 64- or 8-pixel steps)
         divisible_by_64 = (width % 64 == 0) and (height % 64 == 0)
 
         # Kare mi?
@@ -578,7 +603,7 @@ class PinA1Metadata(BasePin):
 
         both_power_of_2 = is_power_of_2(width) and is_power_of_2(height)
 
-        # Sinyal gücü
+        # Signal strength
         signal = 0.0
         reasons = []
 
@@ -608,12 +633,13 @@ class PinA1Metadata(BasePin):
 
     def _analyze_compression_ratio(self, basic_info: dict) -> dict:
         """
-        Dosya boyutu ile piksel sayısı arasındaki oranı analiz eder.
-        AI görseller genelde gerçek fotoğraflardan farklı sıkıştırma
-        karakteristikleri gösterir:
-        - Gerçek fotoğraf JPEG: genelde 2-8 bytes/piksel
-        - AI üretimi PNG: genelde daha yüksek (sıkıştırılmamış)
-        - AI üretimi JPEG: genelde daha düşük (fazla smooth alanlar)
+        Analyse the ratio between file size and pixel count.
+
+        Generated images typically exhibit different compression
+        characteristics from photographs:
+        - photographic JPEG: usually 2-8 bytes per pixel
+        - generated PNG:     usually higher (little to compress away)
+        - generated JPEG:    usually lower (large smooth areas)
         """
         width = basic_info.get("width", 0)
         height = basic_info.get("height", 0)
@@ -626,13 +652,13 @@ class PinA1Metadata(BasePin):
         total_pixels = width * height
         bytes_per_pixel = file_size / total_pixels
 
-        # Format bazlı beklenen aralıklar
+        # Expected ranges by format
         anomaly = False
         details = ""
 
         if fmt == "JPEG":
-            # Gerçek fotoğraf JPEG: ~1.5-8 bpp
-            # AI JPEG: genelde <1.0 bpp (çok smooth) veya >10 bpp (kalite 100)
+            # Photographic JPEG: ~1.5-8 bpp
+            # Generated JPEG: usually <1.0 bpp (very smooth) or >10 bpp (quality 100)
             if bytes_per_pixel < 0.5:
                 anomaly = True
                 details = f"Asiri dusuk sikistirma orani ({bytes_per_pixel:.2f} B/px) — yapay uretim sinyali"
@@ -640,8 +666,8 @@ class PinA1Metadata(BasePin):
                 anomaly = True
                 details = f"Asiri yuksek sikistirma orani ({bytes_per_pixel:.2f} B/px) — olagan disi"
         elif fmt == "PNG":
-            # PNG sıkıştırma: AI görseller genelde 0.5-3.0 bpp
-            # Gerçek fotoğraf PNG: genelde >3.0 bpp
+            # PNG compression: generated images usually 0.5-3.0 bpp
+            # Photographic PNG: usually >3.0 bpp
             if bytes_per_pixel < 0.3:
                 anomaly = True
                 details = f"Cok dusuk PNG boyutu ({bytes_per_pixel:.2f} B/px) — olagan disi"
@@ -667,29 +693,31 @@ class PinA1Metadata(BasePin):
                          metadata_completeness: dict, dimension_analysis: dict,
                          compression_analysis: dict) -> tuple[float, dict]:
         """
-        İki katmanlı skorlama sistemi:
+        Two-tier scoring system.
 
-        KATMAN 1 — KESİN KANIT KURALLARI (Evidence Floor)
-        Kriptografik veya yapısal kesin kanıt varsa minimum skor garanti edilir.
-        Bu kurallar ağırlıklı toplamı OVERRIDE eder.
+        TIER 1 — DECISIVE EVIDENCE RULES (evidence floor)
+        When cryptographic or structural proof is present, a minimum
+        score is guaranteed. These rules OVERRIDE the weighted sum,
+        because a producer's own declaration of synthesis cannot be
+        outvoted by an accumulation of weak heuristics.
 
-        Kurallar:
-        - C2PA + bilinen AI issuer (OpenAI, Google, Adobe) → min 0.85
-        - C2PA marker bulundu (issuer bilinmiyor)           → min 0.70
-        - AI metadata imzası ≥ %90 güvenilirlik (SD params) → min 0.75
-        - AI metadata imzası ≥ %80 güvenilirlik              → min 0.65
+        Rules:
+        - C2PA + known AI issuer (OpenAI, Google, Adobe) -> min 0.85
+        - C2PA marker found, issuer unknown              -> min 0.70
+        - AI metadata signature >= 90% confidence         -> min 0.75
+        - AI metadata signature >= 80% confidence         -> min 0.65
 
-        KATMAN 2 — AĞIRLIKLI TOPLAM (Weighted Sum)
-        Kesin kanıt yoksa veya floor'un altında kalırsa,
-        tüm sinyallerin ağırlıklı toplamı kullanılır.
+        TIER 2 — WEIGHTED SUM
+        Where no decisive evidence exists, or where it falls below the
+        floor, the weighted sum of all signals is used instead.
 
-        Skor: 0.0 (temiz/gerçek) → 1.0 (kesin yapay üretim)
+        Score: 0.0 (clean / authentic) to 1.0 (certain synthesis)
         """
         breakdown = {}
 
-        # ── Katman 2: Ağırlıklı toplam (her zaman hesaplanır) ──
+        # ── Tier 2: weighted sum (always computed) ──
 
-        # 1. AI imzası tespit edildi mi?
+        # 1. Was a generator signature detected?
         if ai_detection["ai_detected"]:
             ai_score = ai_detection["confidence"]
             breakdown["ai_signature"] = {
@@ -746,7 +774,7 @@ class PinA1Metadata(BasePin):
             "contribution": round(dt_signal * self.weights["no_datetime"], 4)
         }
 
-        # 6. Yazılım alanı şüpheli mi?
+        # 6. Is the software field suspicious?
         sw_signal = 0.0
         if software_analysis["has_ai_editing_features"]:
             sw_signal = 0.6
@@ -758,7 +786,7 @@ class PinA1Metadata(BasePin):
             "contribution": round(sw_signal * self.weights["software_suspicious"], 4)
         }
 
-        # 7. Metadata tamamen silinmiş mi?
+        # 7. Was the metadata entirely stripped?
         strip_signal = 1.0 if metadata_completeness["is_stripped"] else 0.0
         if metadata_completeness["completeness"] == "minimal":
             strip_signal = 0.5
@@ -768,7 +796,7 @@ class PinA1Metadata(BasePin):
             "contribution": round(strip_signal * self.weights["metadata_stripped"], 4)
         }
 
-        # 8. AI tipik boyutları
+        # 8. Dimensions typical of generators
         dim_signal = dimension_analysis.get("signal", 0.0)
         breakdown["ai_dimensions"] = {
             "weight": self.weights["ai_dimensions"],
@@ -776,7 +804,7 @@ class PinA1Metadata(BasePin):
             "contribution": round(dim_signal * self.weights["ai_dimensions"], 4)
         }
 
-        # 9. Sıkıştırma anomalisi
+        # 9. Compression anomaly
         comp_signal = 1.0 if compression_analysis["anomaly_detected"] else 0.0
         breakdown["compression_anomaly"] = {
             "weight": self.weights["compression_anomaly"],
@@ -784,35 +812,35 @@ class PinA1Metadata(BasePin):
             "contribution": round(comp_signal * self.weights["compression_anomaly"], 4)
         }
 
-        # Ağırlıklı toplam
+        # Weighted sum
         weighted_sum = sum(item["contribution"] for item in breakdown.values())
         weighted_sum = max(0.0, min(1.0, weighted_sum))
 
-        # ── Katman 1: Kesin Kanıt Kuralları (Evidence Floor) ──
+        # ── Tier 1: decisive evidence rules (evidence floor) ──
         evidence_floor = 0.0
         evidence_rule = None
 
-        # ── Katman 1: Dinamik Kesin Kanıt Skorlaması ──
+        # ── Tier 1: graduated decisive-evidence scoring ──
         #
-        # Kesin kanıt bulunduğunda, skor kanıtın kendi güvenilirliğinden
-        # türer ve destekleyici sinyallerle artırılır.
+        # When decisive evidence is present the score derives from the
+        # confidence of that evidence, raised by corroborating signals.
         #
-        # Formül:
-        #   evidence_floor = kanıt_güvenilirliği × baz_çarpan
+        # Formula:
+        #   evidence_floor = evidence_confidence * base_multiplier
         #                  + destekleyici sinyallerden bonus
         #                  → min(toplam, 0.98)
         #
-        # Destekleyici sinyaller (kesin kanıtı güçlendirir):
+        # Corroborating signals (which strengthen decisive evidence):
         #   - AI issuer tespit edildi    → +0.05
-        #   - AI boyut eşleşmesi         → dim_signal × 0.03
-        #   - Metadata tamamen boş       → +0.02
+        #   - generator-typical dimensions -> dim_signal * 0.03
+        #   - metadata entirely absent     -> +0.02
         #   - Kamera verisi yok          → +0.02
 
         evidence_floor = 0.0
         evidence_rule = None
         evidence_components = []
 
-        # Destekleyici sinyalleri topla (kesin kanıt varsa kullanılır)
+        # Accumulate corroborating signals, applied only with decisive evidence
         support_bonus = 0.0
         if c2pa_detection.get("issuer_tool") is not None:
             support_bonus += 0.05
@@ -837,7 +865,7 @@ class PinA1Metadata(BasePin):
                 f"→ baz: {base:.3f} + destek: {support_bonus:.3f} = {evidence_floor:.3f}"
             )
 
-        # Kural 2: AI metadata imzası (SD params, tool markers vb.)
+        # Rule 2: AI metadata signature (SD parameters, tool markers)
         elif ai_detection["ai_detected"] and ai_detection["confidence"] >= 0.80:
             base = ai_detection["confidence"] * 0.75
             evidence_floor = min(base + support_bonus, 0.98)
@@ -847,7 +875,7 @@ class PinA1Metadata(BasePin):
                 f"→ baz: {base:.3f} + destek: {support_bonus:.3f} = {evidence_floor:.3f}"
             )
 
-        # Nihai skor: floor ve weighted_sum'un büyüğü
+        # Final score: the greater of the floor and the weighted sum
         final_score = max(weighted_sum, evidence_floor)
         final_score = round(max(0.0, min(1.0, final_score)), 4)
 
@@ -864,7 +892,7 @@ class PinA1Metadata(BasePin):
         return final_score, breakdown
 
     def _determine_verdict(self, score: float) -> str:
-        """Skora göre verdict belirler."""
+        """Map the numeric score onto a verdict band."""
         if score >= self.thresholds["high_risk"]:
             return "high_risk"
         elif score >= self.thresholds["medium_risk"]:
@@ -883,10 +911,10 @@ class PinA1Metadata(BasePin):
                           metadata_completeness: dict,
                           dimension_analysis: dict,
                           compression_analysis: dict) -> str:
-        """Analiz sonucunun Türkçe açıklamasını üretir."""
+        """Produce the natural-language explanation of the analysis."""
         parts = []
 
-        # C2PA tespiti (en güçlü sinyal)
+        # C2PA detection (the strongest signal)
         if c2pa_detection["c2pa_detected"]:
             issuer = c2pa_detection.get("issuer_tool", "bilinmeyen")
             count = c2pa_detection["marker_count"]
@@ -900,7 +928,7 @@ class PinA1Metadata(BasePin):
         else:
             parts.append("C2PA/JUMBF dijital imza bulunamadi.")
 
-        # AI aracı tespiti
+        # Generator detection
         if ai_detection["ai_detected"]:
             tool = ai_detection["detected_tool"].replace("_", " ").title()
             conf = int(ai_detection["confidence"] * 100)
@@ -934,16 +962,16 @@ class PinA1Metadata(BasePin):
         else:
             parts.append("GPS bilgisi bulunamadi.")
 
-        # Boyut analizi
+        # Dimension analysis
         if dimension_analysis.get("is_ai_dimension"):
             reasons = ", ".join(dimension_analysis.get("reasons", []))
             parts.append(f"BOYUT UYARISI: {reasons}.")
 
-        # Sıkıştırma anomalisi
+        # Compression anomaly
         if compression_analysis.get("anomaly_detected"):
             parts.append(f"SIKISTIRMA ANOMALISI: {compression_analysis['details']}.")
 
-        # Metadata bütünlüğü
+        # Metadata completeness
         comp = metadata_completeness["completeness"]
         total = metadata_completeness["total_fields"]
         if comp == "empty":
@@ -955,7 +983,7 @@ class PinA1Metadata(BasePin):
         elif comp == "rich":
             parts.append(f"Metadata zengin ({total} alan) — gercek fotograf sinyali.")
 
-        # Nihai özet
+        # Closing summary
         verdict_tr = {
             "high_risk": "YUKSEK RISK — Yapay uretim suphesi yuksek",
             "medium_risk": "ORTA RISK — Belirsiz, ek analiz gerekli",
@@ -971,7 +999,7 @@ class PinA1Metadata(BasePin):
 
     @staticmethod
     def _safe_value(value) -> str | int | float | list | None:
-        """EXIF değerini JSON-serializable formata çevirir."""
+        """Convert an EXIF value into a JSON-serialisable form."""
         if isinstance(value, bytes):
             try:
                 return value.decode("utf-8", errors="ignore").strip()
@@ -988,7 +1016,7 @@ class PinA1Metadata(BasePin):
 
     @staticmethod
     def _sanitize_exif_for_json(exif_data: dict) -> dict:
-        """EXIF verisini JSON'a güvenli yazmak için temizler."""
+        """Sanitise EXIF data so it can be written to JSON safely."""
         sanitized = {}
         for key, value in exif_data.items():
             try:
@@ -1005,7 +1033,7 @@ class PinA1Metadata(BasePin):
 # ════════════════════════════════════════════════════════════════
 
 def main():
-    """Komut satırından doğrudan çalıştırma."""
+    """Direct command-line execution."""
     import json as json_module
 
     if len(sys.argv) < 2:
@@ -1022,7 +1050,7 @@ def main():
     pin = PinA1Metadata()
     result = pin.run(image_path)
 
-    # Özet çıktı
+    # Summary output
     print(f"  Durum:    {result['status']}")
     print(f"  Skor:     {result['score']:.4f}")
     print(f"  Verdict:  {result['verdict']}")

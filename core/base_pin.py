@@ -1,7 +1,10 @@
 """
 DeepReality — Base Pin Class
-Tüm PIN modüllerinin miras alacağı temel sınıf.
-Standart JSON çıktı formatı ve ortak yardımcı metodlar burada tanımlanır.
+
+Abstract base class inherited by every pin in the system. It defines
+the standard JSON output envelope, the dependency-context mechanism
+and the shared utility methods, so that each pin implements only its
+own analysis logic.
 """
 
 import json
@@ -15,8 +18,9 @@ from config.settings import OUTPUTS_DIR, OUTPUT_SCHEMA_VERSION
 
 class BasePin(ABC):
     """
-    Her PIN bu sınıftan türer.
-    Standart çıktı formatı:
+    Base class for every analysis pin.
+
+    Standard output envelope:
     {
         "schema_version": "1.0.0",
         "pin_id": "PIN-A1",
@@ -26,10 +30,10 @@ class BasePin(ABC):
         "input_file": "image.jpg",
         "input_hash": "sha256...",
         "status": "success" | "error",
-        "results": { ... },          # Pin'e özel sonuçlar
-        "score": 0.0 - 1.0,          # 0 = temiz, 1 = kesin sahte
+        "results": { ... },          # Pin-specific findings
+        "score": 0.0 - 1.0,          # 0 = authentic, 1 = certainly fake
         "verdict": "low_risk" | "medium_risk" | "high_risk",
-        "details": "Türkçe açıklama",
+        "details": "Human-readable explanation",
         "errors": []
     }
     """
@@ -39,31 +43,34 @@ class BasePin(ABC):
         self.pin_name = pin_name
         self.layer = layer
         self.errors: list[str] = []
-        # Bağımlı pinler için üst pin sonuçları (orkestratör doldurur):
-        #   {"PIN-A3": {...tam sonuç...}, "_pins": {"PIN-A3": <pin instance>}}
+        # Upstream results for dependent pins, populated by the orchestrator:
+        #   {"PIN-A3": {...full result...}, "_pins": {"PIN-A3": <pin instance>}}
         self.context: dict = {}
 
     @abstractmethod
     def analyze(self, file_path: str) -> dict:
         """
-        Her pin bu metodu kendi analiz mantığıyla doldurur.
+        Implemented by each pin with its own analysis logic.
+
         Returns: {"results": {...}, "score": float, "details": str}
         """
         pass
 
     def run(self, file_path: str, context: dict | None = None) -> dict:
         """
-        Ana çalıştırıcı. analyze() metodunu çağırır,
-        standart JSON formatına sarar, dosyaya kaydeder.
+        Execute the pin: invoke analyze(), wrap the outcome in the
+        standard envelope and persist it to disk.
 
-        context: Bu pinin bağımlı olduğu pinlerin sonuçları
-                 (paralel orkestratör tarafından geçirilir).
+        Args:
+            file_path: Image to analyse.
+            context:   Results of the pins this pin depends on, supplied
+                       by the parallel orchestrator.
         """
         self.errors = []
         self.context = context or {}
         file_path = Path(file_path)
 
-        # Dosya kontrolü
+        # Reject a missing input before any work is attempted
         if not file_path.exists():
             return self._build_output(
                 file_path=str(file_path),
@@ -75,7 +82,8 @@ class BasePin(ABC):
                 details=f"Dosya bulunamadı: {file_path}"
             )
 
-        # Dosya hash'i hesapla (tekrarlı analizleri önlemek ve takip için)
+        # Content hash: deduplicates repeated analyses and provides a
+        # stable identifier for downstream auditing
         file_hash = self._compute_hash(file_path)
 
         try:
@@ -101,14 +109,14 @@ class BasePin(ABC):
                 details=f"Analiz hatası: {str(e)}"
             )
 
-        # JSON dosyasına kaydet
+        # Persist the envelope as JSON
         self._save_output(output, file_path.stem)
         return output
 
     def _build_output(self, file_path: str, file_hash: str,
                       status: str, results: dict, score: float,
                       verdict: str, details: str) -> dict:
-        """Standart JSON çıktı formatını oluşturur."""
+        """Assemble the standard JSON output envelope."""
         return {
             "schema_version": OUTPUT_SCHEMA_VERSION,
             "pin_id": self.pin_id,
@@ -126,7 +134,7 @@ class BasePin(ABC):
         }
 
     def _save_output(self, output: dict, file_stem: str) -> Path:
-        """JSON çıktısını outputs/ klasörüne kaydeder."""
+        """Write the JSON envelope to the outputs directory."""
         filename = f"{file_stem}_{self.pin_id}.json"
         output_path = OUTPUTS_DIR / filename
         with open(output_path, "w", encoding="utf-8") as f:
@@ -135,7 +143,7 @@ class BasePin(ABC):
 
     @staticmethod
     def _compute_hash(file_path: Path) -> str:
-        """Dosyanın SHA-256 hash'ini hesaplar."""
+        """Compute the SHA-256 digest of a file."""
         sha256 = hashlib.sha256()
         with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(8192), b""):

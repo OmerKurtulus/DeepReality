@@ -1,33 +1,37 @@
 """
-DeepReality — PIN-D2: Anomaly Localization (XAI)
-════════════════════════════════════════════════
+DeepReality — PIN-D2: Anomaly Localisation (XAI)
+================================================
 
-İki BAĞIMSIZ kanıt kaynağını birleştirerek manipüle edilmiş bölgeleri
-tek bir haritada işaretler:
+Marks manipulated regions on a single map by intersecting two
+independent classes of evidence:
 
-    1. PIN-A3 ELA anomali bölgeleri (sıkıştırma-fiziği tabanlı kanıt)
-    2. PIN-D1 Grad-CAM birleşik haritası (model-karar tabanlı kanıt)
+    1. ELA anomaly regions from PIN-A3 — grounded in compression
+       physics and entirely independent of any learned model.
+    2. The combined Grad-CAM map from PIN-D1 — grounded in the
+       detectors' learned representations.
 
-Füzyon mantığı:
-    - Bir ELA bölgesinin içindeki ortalama Grad-CAM aktivasyonu
-      eşiği aşıyorsa bölge "DOĞRULANMIŞ" (fused) sayılır — iki
-      bağımsız yöntem aynı bölgeyi işaret ediyor demektir. Bu,
-      tek kaynaklı işaretlerden çok daha güçlü bir kanıttır.
-    - Sadece ELA veya sadece CAM tarafından işaretlenen bölgeler de
-      kaynak etiketiyle raporlanır.
+Fusion rationale
+----------------
+Two methods with disjoint failure modes converging on the same
+coordinates is substantially stronger evidence than either alone. For
+every ELA region the mean Grad-CAM activation inside it is measured;
+regions above the configured threshold are marked as corroborated
+("fused"). Regions supported by only one method are reported with
+their source recorded, so the operator can see how much weight each
+marking deserves.
 
-Bağımlılık: PIN-A3 (ELA bölgeleri), PIN-D1 (ham CAM matrisi,
-instance üzerindeki cam_cache ile paylaşılır), PIN-B3 (frekans skoru).
+Dependencies: PIN-A3 (ELA regions), PIN-D1 (raw CAM matrices shared via
+the instance cache) and PIN-B3 (frequency score).
 
-Çıktı: Standart PIN JSON +
-    - marked_regions: [{bbox, source: ela|gradcam|fused, strength, ...}]
-    - annotated_image: işaretli overlay PNG yolu
-    - skor: "lokalize manipülasyon kanıtı" gücü (fake olasılığı DEĞİL —
-      ensemble katmanında destekleyici sinyal olarak kullanılır)
+Output: Standard pin envelope containing
+    - marked_regions:  [{bbox, source: ela|gradcam|fused, strength, ...}]
+    - annotated_image: overlay with the regions drawn on the original
+    - score:           the strength of localised manipulation evidence.
+      This is NOT a fake probability; it is a supporting signal for the
+      adjudication and ensemble stages.
 
-Görsel işaretleme:
-    KIRMIZI  = ELA hotspot   | MAVİ   = ELA coldspot
-    SARI     = Grad-CAM odağı | TURUNCU (kalın) = doğrulanmış füzyon
+Colour key: RED = ELA hotspot, BLUE = ELA coldspot,
+YELLOW = Grad-CAM focus, ORANGE (heavy) = corroborated fusion.
 """
 
 import numpy as np
@@ -46,17 +50,17 @@ except ImportError:
 import cv2
 
 
-# BGR renkleri
-_COLOR_ELA_HOT = (0, 0, 255)      # kırmızı
-_COLOR_ELA_COLD = (255, 80, 0)    # mavi
-_COLOR_CAM = (0, 220, 255)        # sarı
-_COLOR_FUSED = (0, 140, 255)      # turuncu
+# BGR colours
+_COLOR_ELA_HOT = (0, 0, 255)      # red
+_COLOR_ELA_COLD = (255, 80, 0)    # blue
+_COLOR_CAM = (0, 220, 255)        # yellow
+_COLOR_FUSED = (0, 140, 255)      # orange
 
 
 class PinD2AnomalyLocalization(BasePin):
     """
-    PIN-D2: Anomaly Localization — ELA ve Grad-CAM kanıtlarını
-    birleştirip manipülasyon bölgelerini tek haritada işaretler.
+    PIN-D2: fuses ELA and Grad-CAM evidence into a single annotated
+    map of candidate manipulation regions.
     """
 
     def __init__(self):
@@ -66,11 +70,11 @@ class PinD2AnomalyLocalization(BasePin):
             layer=4
         )
 
-    # ── Yardımcılar ─────────────────────────────────────────────────
+    # ── Helpers ─────────────────────────────────────────────────────
 
     @staticmethod
     def _ela_regions_from_context(a3_results: dict) -> list[dict]:
-        """PIN-A3 manipulation_regions → standart bbox listesi."""
+        """Convert PIN-A3 manipulation_regions into the standard bbox form."""
         regions = []
         for reg in a3_results.get("manipulation_regions", []):
             pixel_range = reg.get("pixel_range", {})
@@ -91,9 +95,12 @@ class PinD2AnomalyLocalization(BasePin):
     @staticmethod
     def _merge_adjacent_boxes(regions: list[dict]) -> list[dict]:
         """
-        Komşu/bitişik ELA grid hücrelerini tek bölgede birleştirir
-        (8x8 grid'de büyük bir manipülasyon birden çok hücreye yayılır).
-        Aynı tipteki kesişen/bitişik kutular birleştirilir.
+        Merge adjacent ELA grid cells into single regions.
+
+        A manipulation larger than one cell of the 8x8 grid necessarily
+        spans several cells; reporting them separately would overstate
+        the number of distinct findings. Overlapping or touching boxes
+        of the same type are combined.
         """
         merged: list[dict] = []
         for reg in regions:
@@ -103,7 +110,7 @@ class PinD2AnomalyLocalization(BasePin):
                 if m["type"] != reg["type"]:
                     continue
                 mb = m["bbox"]
-                # Bitişiklik kontrolü (1 piksel tolerans)
+                # Adjacency test with a one-pixel tolerance
                 if (b["x"] <= mb["x"] + mb["w"] + 1 and
                         mb["x"] <= b["x"] + b["w"] + 1 and
                         b["y"] <= mb["y"] + mb["h"] + 1 and
@@ -132,10 +139,11 @@ class PinD2AnomalyLocalization(BasePin):
     @staticmethod
     def _cam_regions(cam: np.ndarray, quantile: float,
                      min_area_ratio: float, max_regions: int) -> list[dict]:
-        """Birleşik CAM'in üst quantile maskesinden bölge çıkarır."""
+        """Extract regions from the upper quantile of the combined CAM."""
         h, w = cam.shape
         threshold = float(np.quantile(cam, quantile))
-        # Tamamen düz CAM'lerde (threshold≈0) sahte bölge üretme
+        # Guard against flat CAMs, where a near-zero threshold would
+        # otherwise mark the entire frame as a region
         if threshold <= 1e-6:
             return []
         mask = (cam >= threshold).astype(np.uint8)
@@ -178,7 +186,7 @@ class PinD2AnomalyLocalization(BasePin):
                 cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, 2, cv2.LINE_AA
             )
 
-    # ── Ana analiz ──────────────────────────────────────────────────
+    # ── Main analysis ───────────────────────────────────────────────
 
     def analyze(self, file_path: str) -> dict:
         image = Image.open(file_path)
@@ -191,12 +199,12 @@ class PinD2AnomalyLocalization(BasePin):
         fusion_cfg = XAI_CONFIG["fusion"]
         evidence = XAI_CONFIG["evidence_scores"]
 
-        # ── 1. Kanıt kaynaklarını topla ──
+        # ── 1. Collect the evidence sources ──
         a3_results = self.context.get("PIN-A3", {}).get("results", {})
         ela_raw = self._ela_regions_from_context(a3_results)
         ela_regions = self._merge_adjacent_boxes(ela_raw)
 
-        # PIN-D1 instance'ından ham CAM matrisi (orijinal çözünürlükte)
+        # Raw CAM matrix from the PIN-D1 instance, at native resolution
         combined_cam = None
         d1_pin = self.context.get("_pins", {}).get("PIN-D1")
         if d1_pin is not None and getattr(d1_pin, "cam_cache", None):
@@ -215,7 +223,7 @@ class PinD2AnomalyLocalization(BasePin):
                 max_regions=XAI_CONFIG["max_regions"],
             )
 
-        # ── 2. Füzyon: ELA bölgesi + CAM doğrulaması ──
+        # ── 2. Fusion: ELA region corroborated by CAM attention ──
         marked_regions = []
         fused_count = 0
         confirm_thr = fusion_cfg["ela_cam_confirm_threshold"]
@@ -242,12 +250,13 @@ class PinD2AnomalyLocalization(BasePin):
                 ),
             })
 
-        # CAM'in işaretlediği ama ELA'nın işaretlemediği bölgeler.
-        # ÖNEMLİ KAPI: Grad-CAM normalize edildiği için her görselde
-        # "en sıcak" bölgeler vardır — modeller fake demiyorsa bu
-        # bölgeler anomali değil, sadece modelin baktığı yerdir.
-        # Bu yüzden CAM-only bölgeler ancak en az bir Katman 2 modeli
-        # medium_risk üstü skor verdiyse işaretlenir.
+        # Regions marked by Grad-CAM but not by ELA.
+        # IMPORTANT GATE: because the CAM is normalised, every image has
+        # some "hottest" region. When the detectors do not report
+        # synthesis, those regions are not anomalies — they merely show
+        # where the model looked. CAM-only regions are therefore marked
+        # only if at least one Layer 2 model exceeded the medium-risk
+        # threshold.
         d1_scores = (
             self.context.get("PIN-D1", {}).get("results", {})
             .get("source_scores", {})
@@ -287,12 +296,12 @@ class PinD2AnomalyLocalization(BasePin):
                     ),
                 })
 
-        # ── 3. Kanıt skoru (fake olasılığı DEĞİL) ──
+        # ── 3. Evidence score (NOT a fake probability) ──
         ela_high = any(
             r["severity"] == "high" for r in ela_regions
         )
-        # Güçlü CAM konsantrasyonu: modeller şüpheli diyor VE
-        # odak küçük bir alanda yoğunlaşmış
+        # Strong CAM concentration: the detectors are suspicious AND
+        # the attention is concentrated in a small area
         cam_concentrated = models_suspicious and any(
             r["mean_activation"] >= 0.70 and r["area_ratio"] <= 0.15
             for r in cam_regions
@@ -322,7 +331,7 @@ class PinD2AnomalyLocalization(BasePin):
         else:
             verdict = "low_risk"
 
-        # ── 4. İşaretli görseli üret ──
+        # ── 4. Render the annotated image ──
         thickness = max(2, width // 500)
         for m in marked_regions:
             if m["source"] == "fused":
@@ -344,7 +353,7 @@ class PinD2AnomalyLocalization(BasePin):
             )
             cv2.imwrite(annotated_path, canvas)
 
-        # ── 5. Sonuç ──
+        # ── 5. Result ──
         results = {
             "marked_regions": marked_regions,
             "region_counts": {

@@ -1,38 +1,42 @@
 """
 DeepReality — PIN-D1: Grad-CAM Heatmap (XAI)
-════════════════════════════════════════════
+============================================
 
-Katman 2 modellerinin (PIN-B1 CLIP, PIN-B2 SigLIP2, PIN-B3 FreqCNN)
-"sahtelik" kararını verirken görüntünün HANGİ bölgelerine baktığını
-Grad-CAM tekniğiyle ısı haritası olarak görselleştirir.
+Recovers the spatial support of each Layer 2 model's decision: which
+regions of the image the detectors (PIN-B1 CLIP, PIN-B2 SigLIP2,
+PIN-B3 frequency CNN) relied upon when assigning their "fake" score.
 
-Teknik:
-    Grad-CAM (Selvaraju et al., ICCV 2017) — hedef sınıf logitinin
-    (fake) seçilen katman aktivasyonlarına göre gradyanları alınır,
-    kanal bazında ağırlıklandırılıp ReLU'dan geçirilerek uzamsal
-    önem haritası üretilir. Harici pakete ihtiyaç duymadan PyTorch
-    hook'ları ile implemente edilmiştir (transformers 5.x uyumlu).
+Method
+------
+Grad-CAM (Selvaraju et al., ICCV 2017). The target-class logit is
+differentiated with respect to the activations of a chosen layer; the
+resulting channel gradients are used as importance weights, and the
+weighted activation sum is rectified to retain only evidence that
+supports the class. The implementation uses PyTorch hooks directly
+rather than an external XAI package, which keeps the pin compatible
+with current transformers releases and removes a dependency.
 
-    ViT modelleri (B1/B2) için token aktivasyonları patch ızgarasına
-    (B1: 16x16, B2: 32x32) yeniden şekillendirilir; CLS token'ı varsa
-    (CLIP) atılır. CNN (B3) için klasik Grad-CAM uygulanır — B3
-    frekans domain'inde çalıştığından haritası uzamsal olarak
-    YAKLAŞIKTIR ve birleşik haritada düşük ağırlıkla kullanılır.
+For the ViT backbones (B1, B2) token activations are reshaped onto the
+patch grid (B1: 16x16, B2: 32x32) and the CLS token is discarded where
+present. For the convolutional frequency model (B3) standard Grad-CAM
+applies, but because that model operates in the frequency domain its
+map is only spatially approximate and is therefore down-weighted in
+the combined heatmap.
 
-Bağımlılık: PIN-B1, PIN-B2, PIN-B3 (aynı model instance'ları paylaşılır
-— ek bellek maliyeti yoktur; bu yüzden pipeline'da bu pinlerden sonra
-çalışır. Diğer tüm pinlerle paraleldir.)
+Dependencies: PIN-B1, PIN-B2, PIN-B3. The already-loaded model
+instances are reused, so no additional memory is required; this is why
+the pin is scheduled after the detection core rather than beside it.
 
-Girdi:  Görsel dosya yolu + context (B1/B2/B3 sonuçları)
-Çıktı:  Standart PIN JSON +
-    - heatmaps:       model başına overlay PNG yolları + combined
-    - focus_regions:  model başına odak bölgeleri (bbox, aktivasyon)
-    - model_agreement: CLIP ve SigLIP odaklarının uzamsal uyumu (IoU)
-    - cam_cache:      (JSON'a yazılmaz) PIN-D2'nin kullanması için
-                      ham CAM matrisleri instance üzerinde tutulur
+Input:  Image path plus the upstream detection results.
+Output: Standard pin envelope containing
+    - heatmaps:        per-model overlay paths plus the combined map
+    - focus_regions:   attention regions per model (bbox, activation)
+    - model_agreement: spatial IoU between the CLIP and SigLIP maps
+    - cam_cache:       raw CAM matrices held on the instance for PIN-D2
+                       (never serialised to JSON)
 
-Skor: XAI pinleri risk skoru üretmez (bilgilendirme katmanı) → 0.0,
-verdict "informational".
+Score: explainability pins produce no risk score. The envelope carries
+0.0 with the verdict "informational".
 """
 
 import numpy as np
@@ -54,18 +58,19 @@ import cv2
 
 
 # ---------------------------------------------------------------------------
-# Grad-CAM çekirdeği (hook tabanlı, paket bağımsız)
+# Grad-CAM core (hook-based, no external dependency)
 # ---------------------------------------------------------------------------
 
 class _ActivationCapture:
     """
-    Hedef katmanın aktivasyonunu (graf bağlantısı KOPMADAN) yakalar.
+    Captures a target layer's activation with its autograd graph intact.
 
-    Gradyan, tam backward() yerine torch.autograd.grad(logit, aktivasyon)
-    ile hesaplanır — böylece gradyan yalnızca hedef katmana kadar geri
-    yayılır. Hedef katman son encoder bloğu olduğundan bu, 24 bloklu
-    ViT'in tamamında backward yapmaya kıyasla ~20x daha hızlıdır ve
-    model parametrelerinin .grad alanlarına hiç dokunmaz.
+    Gradients are obtained through torch.autograd.grad(logit,
+    activation) rather than a full backward() pass, so back-propagation
+    stops at the target layer. Since that layer is the final encoder
+    block, this is roughly twenty times faster than differentiating the
+    whole 24-block ViT, and it never touches the .grad fields of the
+    model parameters.
     """
 
     def __init__(self, target_layer: torch.nn.Module):
@@ -74,7 +79,7 @@ class _ActivationCapture:
 
     def _save(self, module, inputs, output):
         out = output[0] if isinstance(output, tuple) else output
-        self.activation = out  # detach YOK — autograd.grad için graf gerekli
+        self.activation = out  # No detach: autograd.grad requires the graph
 
     def remove(self):
         self._handle.remove()
@@ -82,15 +87,15 @@ class _ActivationCapture:
 
 def _targeted_gradients(scalar: torch.Tensor,
                         activation: torch.Tensor) -> torch.Tensor:
-    """scalar'ın activation'a göre gradyanı (yalnızca gereken yol)."""
+    """Gradient of a scalar with respect to an activation, along that path only."""
     return torch.autograd.grad(scalar, activation, retain_graph=False)[0]
 
 
 def _find_vit_target_layer(model: torch.nn.Module) -> torch.nn.Module:
     """
-    ViT tabanlı modelde Grad-CAM hedef katmanını bulur:
-    son encoder bloğunun layer_norm1 katmanı (pytorch-grad-cam'in
-    ViT için önerdiği standart hedef).
+    Locate the Grad-CAM target layer of a ViT backbone: the layer_norm1
+    module of the final encoder block, which is the standard choice for
+    transformer architectures.
     """
     candidates = [
         (name, module) for name, module in model.named_modules()
@@ -98,9 +103,9 @@ def _find_vit_target_layer(model: torch.nn.Module) -> torch.nn.Module:
     ]
     if not candidates:
         raise RuntimeError(
-            "ViT hedef katmanı bulunamadı (encoder.layers.*.layer_norm1)"
+            "No ViT target layer found (encoder.layers.*.layer_norm1)"
         )
-    # Son encoder bloğu: layer index'ine göre sırala
+    # Final encoder block: order by layer index
     def layer_index(item):
         parts = item[0].split(".")
         for i, p in enumerate(parts):
@@ -113,9 +118,10 @@ def _find_vit_target_layer(model: torch.nn.Module) -> torch.nn.Module:
 
 def _token_cam(activations: torch.Tensor, gradients: torch.Tensor) -> np.ndarray:
     """
-    ViT token aktivasyonlarından (1, T, C) Grad-CAM haritası üretir.
-    CLS token'ı varsa otomatik tespit edilip atılır.
-    Dönüş: (grid, grid) float32, [0, 1] normalize.
+    Build a Grad-CAM map from ViT token activations of shape (1, T, C).
+    A CLS token is detected and discarded automatically when present.
+
+    Returns: (grid, grid) float32, normalised to [0, 1].
     """
     acts = activations.float()
     grads = gradients.float()
@@ -123,12 +129,14 @@ def _token_cam(activations: torch.Tensor, gradients: torch.Tensor) -> np.ndarray
     num_tokens = acts.shape[1]
     g = isqrt(num_tokens)
     if g * g == num_tokens:
-        pass  # CLS yok (SigLIP)
+        pass  # No CLS token (SigLIP)
     elif isqrt(num_tokens - 1) ** 2 == num_tokens - 1:
-        acts, grads = acts[:, 1:, :], grads[:, 1:, :]  # CLS'yi at (CLIP)
+        acts, grads = acts[:, 1:, :], grads[:, 1:, :]  # Drop CLS (CLIP)
         g = isqrt(num_tokens - 1)
     else:
-        raise RuntimeError(f"Token sayısı kare ızgaraya oturmuyor: {num_tokens}")
+        raise RuntimeError(
+            f"Token count does not map onto a square grid: {num_tokens}"
+        )
 
     weights = grads.mean(dim=1)                          # (1, C)
     cam = torch.einsum("btc,bc->bt", acts, weights)      # (1, T)
@@ -138,8 +146,10 @@ def _token_cam(activations: torch.Tensor, gradients: torch.Tensor) -> np.ndarray
 
 def _conv_cam(activations: torch.Tensor, gradients: torch.Tensor) -> np.ndarray:
     """
-    CNN feature map'lerinden (1, C, H, W) klasik Grad-CAM haritası üretir.
-    Dönüş: (H, W) float32, [0, 1] normalize.
+    Build a standard Grad-CAM map from convolutional feature maps of
+    shape (1, C, H, W).
+
+    Returns: (H, W) float32, normalised to [0, 1].
     """
     acts = activations.float()
     grads = gradients.float()
@@ -158,13 +168,13 @@ def _normalize_cam(cam: np.ndarray) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# PIN sınıfı
+# Pin implementation
 # ---------------------------------------------------------------------------
 
 class PinD1GradCam(BasePin):
     """
-    PIN-D1: Grad-CAM Heatmap — Katman 2 modellerinin karar odağını
-    ısı haritası olarak görselleştirir.
+    PIN-D1: renders the decision focus of the Layer 2 detectors as
+    Grad-CAM heatmaps.
     """
 
     def __init__(self):
@@ -173,13 +183,13 @@ class PinD1GradCam(BasePin):
             pin_name="Grad-CAM Heatmap (XAI)",
             layer=4
         )
-        # PIN-D2'nin kullanacağı ham CAM matrisleri (görsel başına yenilenir)
+        # Raw CAM matrices consumed by PIN-D2, refreshed per image
         self.cam_cache: dict[str, np.ndarray] = {}
 
-    # ── Model bazlı CAM hesaplayıcılar ──────────────────────────────
+    # ── Per-model CAM computation ───────────────────────────────────
 
     def _cam_clip(self, image: Image.Image) -> np.ndarray:
-        """PIN-B1 CLIP ViT-L/14 için Grad-CAM (16x16 patch ızgarası)."""
+        """Grad-CAM for PIN-B1, CLIP ViT-L/14 (16x16 patch grid)."""
         from layer2_detection_core.pin_b1_clip import _load_model, _get_device
 
         model, processor = _load_model()
@@ -199,7 +209,7 @@ class PinD1GradCam(BasePin):
         return cam
 
     def _cam_siglip(self, image: Image.Image) -> np.ndarray:
-        """PIN-B2 SigLIP2-512 için Grad-CAM (32x32 patch ızgarası)."""
+        """Grad-CAM for PIN-B2, SigLIP2-512 (32x32 patch grid)."""
         from layer2_detection_core.pin_b2_siglip2 import _load_model, _get_device
 
         model, processor = _load_model()
@@ -220,9 +230,12 @@ class PinD1GradCam(BasePin):
 
     def _cam_freq(self, image: Image.Image) -> np.ndarray:
         """
-        PIN-B3 FreqCNN için Grad-CAM (7x7 feature map).
-        DİKKAT: Frekans domain'inde çalıştığından uzamsal karşılığı
-        yaklaşıktır (DWT kanalları kısmen uzamsal, DCT kanalı değil).
+        Grad-CAM for PIN-B3, the frequency CNN (7x7 feature map).
+
+        Note: because this model operates on a DCT/DWT representation,
+        the resulting map corresponds only approximately to image
+        coordinates — the wavelet channels retain partial spatial
+        structure while the DCT channel does not.
         """
         from layer2_detection_core.pin_b3_freq import (
             _load_model, _get_device, image_to_frequency_map
@@ -251,7 +264,7 @@ class PinD1GradCam(BasePin):
             capture.remove()
         return cam
 
-    # ── Görselleştirme ve bölge çıkarımı ────────────────────────────
+    # ── Rendering and region extraction ─────────────────────────────
 
     @staticmethod
     def _upscale_cam(cam: np.ndarray, width: int, height: int) -> np.ndarray:
@@ -259,7 +272,7 @@ class PinD1GradCam(BasePin):
 
     def _save_overlay(self, image_bgr: np.ndarray, cam_full: np.ndarray,
                       file_stem: str, tag: str) -> str:
-        """CAM'i renkli overlay olarak orijinal görsel üzerine kaydeder."""
+        """Render the CAM as a colour overlay on the original image."""
         alpha = XAI_CONFIG["overlay_alpha"]
         heat = cv2.applyColorMap(
             (np.clip(cam_full, 0, 1) * 255).astype(np.uint8),
@@ -272,8 +285,10 @@ class PinD1GradCam(BasePin):
 
     def _extract_focus_regions(self, cam_full: np.ndarray) -> list[dict]:
         """
-        Normalize CAM'de focus_threshold üstü bağlı bileşenleri bulur.
-        Dönüş: [{bbox: {x, y, w, h}, area_ratio, mean_activation, peak}]
+        Extract connected components of the normalised CAM above the
+        configured focus threshold.
+
+        Returns: [{bbox: {x, y, w, h}, area_ratio, mean_activation, peak}]
         """
         h, w = cam_full.shape
         threshold = XAI_CONFIG["focus_threshold"]
@@ -305,7 +320,7 @@ class PinD1GradCam(BasePin):
     @staticmethod
     def _spatial_agreement(cam_a: np.ndarray, cam_b: np.ndarray,
                            threshold: float) -> float:
-        """İki CAM'in eşik üstü maskeleri arasında IoU hesaplar."""
+        """Intersection-over-union between two thresholded CAM masks."""
         mask_a = cam_a >= threshold
         mask_b = cam_b >= threshold
         union = np.logical_or(mask_a, mask_b).sum()
@@ -323,12 +338,12 @@ class PinD1GradCam(BasePin):
         image_bgr = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
         file_stem = Path(file_path).stem
 
-        # Üst pin skorları (etiketleme için; yoksa None)
+        # Upstream scores, used for annotation only
         b1 = self.context.get("PIN-B1", {}).get("results", {})
         b2 = self.context.get("PIN-B2", {}).get("results", {})
         b3 = self.context.get("PIN-B3", {}).get("results", {})
 
-        # ── Her model için Grad-CAM hesapla ──
+        # ── Compute Grad-CAM for every available model ──
         cams: dict[str, np.ndarray] = {}
         cam_errors: dict[str, str] = {}
         for tag, fn in [("clip", self._cam_clip),
@@ -350,7 +365,7 @@ class PinD1GradCam(BasePin):
                 "details": "Hiçbir model için Grad-CAM üretilemedi.",
             }
 
-        # ── Orijinal çözünürlüğe büyüt + overlay kaydet ──
+        # ── Upsample to native resolution and write overlays ──
         cams_full = {
             tag: self._upscale_cam(cam, width, height)
             for tag, cam in cams.items()
@@ -364,7 +379,7 @@ class PinD1GradCam(BasePin):
             )
             focus_regions[tag] = self._extract_focus_regions(cam_full)
 
-        # ── Birleşik (combined) CAM ──
+        # ── Combined CAM ──
         weights = XAI_CONFIG["combine_weights"]
         total_weight = sum(weights[t] for t in cams_full)
         combined = sum(
@@ -376,7 +391,7 @@ class PinD1GradCam(BasePin):
         )
         focus_regions["combined"] = self._extract_focus_regions(combined)
 
-        # ── Modeller arası uzamsal uyum ──
+        # ── Cross-model spatial agreement ──
         agreement = None
         if "clip" in cams_full and "siglip" in cams_full:
             agreement = round(self._spatial_agreement(
@@ -384,11 +399,11 @@ class PinD1GradCam(BasePin):
                 XAI_CONFIG["focus_threshold"]
             ), 4)
 
-        # PIN-D2 için ham CAM'leri sakla (JSON'a yazılmaz)
+        # Retain raw CAMs for PIN-D2 (excluded from the JSON envelope)
         self.cam_cache = dict(cams_full)
         self.cam_cache["combined"] = combined
 
-        # ── Sonuç ──
+        # ── Result ──
         n_focus = len(focus_regions.get("combined", []))
         details_parts = [
             f"{len(cams)} model için Grad-CAM üretildi "

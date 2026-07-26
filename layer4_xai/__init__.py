@@ -1,8 +1,11 @@
 """
-DeepReality — Layer 4: Açıklanabilirlik Pinleri (XAI Pins)
-Katman 2 modellerinin kararlarını görselleştirir ve manipülasyon
-bölgelerini lokalize eder. Kara kutu modelleri şeffaflaştırır.
+DeepReality — Layer 4: Explainability Pins (XAI)
 
-PIN-D1: Grad-CAM Heatmap        → Her modelin karar odağını ısı haritası olarak görselleştirir
-PIN-D2: Anomaly Localization    → ELA + Grad-CAM anomali haritalarını birleştirip manipülasyon bölgelerini işaretler
+Renders the decisions of the Layer 2 detectors as spatial evidence and
+localises candidate manipulation regions, converting opaque model
+outputs into findings an analyst can inspect and contest.
+
+PIN-D1: Grad-CAM Heatmap      -> visualises each model's decision focus
+PIN-D2: Anomaly Localisation  -> fuses ELA and Grad-CAM evidence to mark
+                                 candidate manipulation regions
 """

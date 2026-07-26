@@ -1,20 +1,24 @@
-# DeepReality — Bağımlılıklar
+# DeepReality — Dependencies
 # pip install -r Requirements.txt
 
 # Layer 1 — Preprocessing
-Pillow>=10.0.0          # PIN-A1, PIN-A3: Görsel okuma, EXIF çıkarma, JPEG dönüşüm
-c2pa-python>=0.28.0     # PIN-A2: C2PA Content Credentials parse + doğrulama
-opencv-python>=4.8.0    # PIN-A3, PIN-A4: ELA heatmap, görsel işleme, yüz kırpma
-numpy>=1.24.0           # PIN-A3, PIN-A4: İstatistiksel analiz
-pillow-heif>=0.16.0     # PIN-A3: iPhone HEIC/HEIF format desteği
-mediapipe>=0.10.0       # PIN-A4: Yüz tespiti (Face Detection) + landmarks
+Pillow>=10.0.0          # PIN-A1, PIN-A3: image loading, EXIF extraction, JPEG re-encoding
+c2pa-python>=0.28.0     # PIN-A2: C2PA Content Credentials parsing and validation
+opencv-python>=4.8.0    # PIN-A3, PIN-A4: ELA heatmaps, image processing, face cropping
+numpy>=1.24.0           # PIN-A3, PIN-A4: statistical analysis
+pillow-heif>=0.16.0     # PIN-A3: iPhone HEIC/HEIF format support
+mediapipe>=0.10.0       # PIN-A4: face detection (BlazeFace) and landmarks
 
 # Layer 2 — Detection Core
-torch>=2.0.0            # PIN-B1/B2/B3/B4: PyTorch deep learning framework
-transformers>=4.40.0    # PIN-B1/B2/B4: HuggingFace model loading
-scipy>=1.11.0           # PIN-B3: DCT dönüşümü (scipy.fft.dctn)
-PyWavelets>=1.5.0       # PIN-B3: DWT wavelet dönüşümü
+torch>=2.0.0            # PIN-B1/B2/B3/B4: deep learning framework
+transformers>=4.40.0    # PIN-B1/B2/B4: Hugging Face model loading
+scipy>=1.11.0           # PIN-B3: DCT transform (scipy.fft.dctn)
+PyWavelets>=1.5.0       # PIN-B3: DWT wavelet decomposition
 
-# Layer 4 — XAI (Açıklanabilirlik)
-# PIN-D1 Grad-CAM harici pakete ihtiyaç duymaz (PyTorch hook'ları ile
-# implemente edildi — transformers 5.x uyumlu). torch + opencv yeterli.
+# Layer 4 — Explainability
+# PIN-D1 requires no external XAI package: Grad-CAM is implemented with
+# PyTorch hooks and torch.autograd.grad, which keeps the pin compatible
+# with current transformers releases. torch and opencv suffice.
+
+# Layer 5 — LLM Reasoning Engine
+requests>=2.31.0        # PIN-E1: OpenAI-compatible chat-completions client

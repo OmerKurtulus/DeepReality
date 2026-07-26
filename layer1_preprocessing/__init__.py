@@ -1,9 +1,13 @@
 """
-DeepReality — Layer 1: Ön İşlem Pinleri (Pre-Processing Pins)
-Görsel/video sisteme girdiğinde, model analizi öncesinde çalışan hafif ama değerli sinyaller.
+DeepReality — Layer 1: Preprocessing Pins
 
-PIN-A1: EXIF/Metadata Analysis      → AI aracı tespiti, metadata analizi
-PIN-A2: C2PA Provenance Analysis     → Dijital imza doğrulama, kaynak tespiti
-PIN-A3: ELA (Error Level Analysis)   → Manipülasyon tespiti, sıkıştırma analizi
-PIN-A4: Yüz Tespiti & Kırpma        → Yüz tespiti, hizalama, normalizasyon
+Lightweight but high-value signals extracted before any model is
+invoked. These pins read documentary and physical evidence — metadata,
+cryptographic provenance, compression behaviour — which is independent
+of, and in the evidence hierarchy superior to, statistical inference.
+
+PIN-A1: EXIF/Metadata Analysis     -> generator signatures, capture telemetry
+PIN-A2: C2PA Provenance Analysis   -> signed provenance, source verification
+PIN-A3: Error Level Analysis       -> localised manipulation, compression traces
+PIN-A4: Face Detection & Cropping  -> detection, alignment, normalisation
 """

@@ -1,51 +1,55 @@
 """
-DeepReality — Ana Çalıştırıcı
-═════════════════════════════
+DeepReality — Command-Line Entry Point
+======================================
 
-Kullanım:
-    1. input/ klasörüne görsellerini at
+Usage:
+    1. Place images in the input/ directory
     2. python3 main.py
-    3. Sonuçlar outputs/ klasörüne yazılır + terminalde özet gösterilir
+    3. Results are written to outputs/ and summarised in the terminal
 
-Çalışma modeli (PIN Architecture — PARALEL):
-    Bağımsız pinler aynı anda çalışır; sadece başka pinin çıktısını
-    bekleyen pinler (XAI katmanı) bağımlılık grafiğine göre sıralanır.
+Execution model (PIN Architecture — parallel):
+    Independent pins execute concurrently. Only pins that consume the
+    output of another pin are ordered, and the orchestrator derives that
+    ordering automatically from the declared dependency graph.
 
-    ┌── PARALEL ────────────────────────────────────────────────┐
-    │ PIN-A1: EXIF/Metadata       → {dosya}_PIN-A1.json          │
-    │ PIN-A2: C2PA Provenance      → {dosya}_PIN-A2.json         │
-    │ PIN-A3: ELA                  → {dosya}_PIN-A3.json + png   │
-    │ PIN-A4: Yüz Tespiti          → {dosya}_PIN-A4.json + png   │
-    │ PIN-B1: CLIP ViT-L/14        → {dosya}_PIN-B1.json         │
-    │ PIN-B2: SigLIP2-base-512     → {dosya}_PIN-B2.json         │
-    │ PIN-B3: Frekans (DCT/DWT)    → {dosya}_PIN-B3.json         │
-    │ PIN-B4: Independent Core     → {dosya}_PIN-B4.json         │
-    └────────────────────────────────────────────────────────────┘
-                  ↓ (B1+B2+B3 bitince)
-    PIN-D1: Grad-CAM Heatmap (XAI)     → {dosya}_XAI_D1_*.png
-                  ↓ (A3+D1 bitince)
-    PIN-D2: Anomaly Localization (XAI) → {dosya}_XAI_D2_anomaly.png
+    +-- CONCURRENT --------------------------------------------+
+    | PIN-A1: EXIF / metadata        -> {stem}_PIN-A1.json      |
+    | PIN-A2: C2PA provenance        -> {stem}_PIN-A2.json      |
+    | PIN-A3: Error Level Analysis   -> {stem}_PIN-A3.json + png|
+    | PIN-A4: Face detection         -> {stem}_PIN-A4.json + png|
+    | PIN-B1: CLIP ViT-L/14          -> {stem}_PIN-B1.json      |
+    | PIN-B2: SigLIP2-base-512       -> {stem}_PIN-B2.json      |
+    | PIN-B3: Frequency (DCT/DWT)    -> {stem}_PIN-B3.json      |
+    | PIN-B4: Independent Core       -> {stem}_PIN-B4.json      |
+    +-----------------------------------------------------------+
+                  | after B1 + B2 + B3
+    PIN-D1: Grad-CAM heatmaps          -> {stem}_XAI_D1_*.png
+                  | after A3 + B3 + D1
+    PIN-D2: Anomaly localisation       -> {stem}_XAI_D2_anomaly.png
+                  | after every upstream pin
+    PIN-E1: LLM reasoning engine       -> {stem}_PIN-E1.json
+
+Author: Omer Faruk Kurtulus
 """
 
 import sys
-import json
 import os
 from pathlib import Path
 
-# MediaPipe / TFLite uyarı mesajlarını bastır
+# Suppress MediaPipe / TFLite console noise before those libraries load
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["GLOG_minloglevel"] = "3"
 
-# Proje kök dizinini ayarla
+# Ensure the project root is importable regardless of working directory
 PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# HEIC/HEIF desteğini kaydet (iPhone fotoğrafları)
+# Register HEIC/HEIF support for iPhone photographs
 try:
     from pillow_heif import register_heif_opener
     register_heif_opener()
 except ImportError:
-    pass  # pillow-heif kurulu değilse sessizce devam et
+    pass  # Optional dependency; other formats remain unaffected
 
 # Layer 1 — Preprocessing
 from layer1_preprocessing.pin_a1_metadata import PinA1Metadata
@@ -59,23 +63,34 @@ from layer2_detection_core.pin_b2_siglip2 import PinB2Siglip
 from layer2_detection_core.pin_b3_freq import PinB3Freq
 from layer2_detection_core.pin_b4_IndependentCore import PinB4IndependentCore
 
-# Layer 4 — XAI (Açıklanabilirlik)
+# Layer 4 — Explainability
 from layer4_xai.pin_d1_gradcam import PinD1GradCam
 from layer4_xai.pin_d2_anomaly import PinD2AnomalyLocalization
 
-# Paralel PIN orkestratörü
+# Layer 5 — LLM Reasoning Engine
+from layer5_llm_reasoning.pin_e1_llm import PinE1LLMReasoning, UPSTREAM_PINS
+
+# Parallel pin orchestrator
 from core.pipeline import PinPipeline
 
-# Desteklenen görsel formatları
 SUPPORTED_FORMATS = {
     ".jpg", ".jpeg", ".png", ".webp", ".bmp",
     ".tiff", ".tif", ".gif",
-    ".heic", ".heif",  # iPhone fotoğrafları
+    ".heic", ".heif",  # iPhone photographs
+}
+
+# Shared risk-level labels for terminal output
+RISK_LABELS = {
+    "high_risk":   "YUKSEK RISK",
+    "medium_risk": "ORTA RISK",
+    "low_risk":    "DUSUK RISK",
+    "no_data":     "VERI YOK",
+    "error":       "HATA",
 }
 
 
 def find_images(input_dir: Path) -> list[Path]:
-    """input/ klasöründeki tüm görselleri bulur."""
+    """Return every supported image file in the input directory."""
     images = []
     for file in sorted(input_dir.iterdir()):
         if file.is_file() and file.suffix.lower() in SUPPORTED_FORMATS:
@@ -84,26 +99,18 @@ def find_images(input_dir: Path) -> list[Path]:
 
 
 def print_pin_a1_summary(result: dict):
-    """PIN-A1 sonucunu terminalde gösterir."""
+    """Render the PIN-A1 metadata result."""
     score = result["score"]
     verdict = result["verdict"]
     source_tool = result["results"].get("source_tool", None)
     exif_count = result["results"].get("exif_fields_found", 0)
 
-    # Scoring method bilgisi
     breakdown = result["results"].get("score_breakdown", {})
     method = breakdown.get("_scoring_method", {})
     floor_applied = method.get("floor_applied", False)
     evidence_rule = method.get("evidence_rule")
 
-    verdict_display = {
-        "high_risk":   "YUKSEK RISK",
-        "medium_risk": "ORTA RISK",
-        "low_risk":    "DUSUK RISK",
-        "error":       "HATA"
-    }
-
-    print(f"    Skor:     {score:.4f} → {verdict_display.get(verdict, verdict)}")
+    print(f"    Skor:     {score:.4f} → {RISK_LABELS.get(verdict, verdict)}")
     print(f"    AI Araci: {source_tool if source_tool else 'Tespit edilmedi'}")
     print(f"    EXIF:     {exif_count} alan bulundu")
     if floor_applied and evidence_rule:
@@ -111,20 +118,12 @@ def print_pin_a1_summary(result: dict):
 
 
 def print_pin_a2_summary(result: dict):
-    """PIN-A2 sonucunu terminalde gösterir."""
+    """Render the PIN-A2 C2PA provenance result."""
     score = result["score"]
     verdict = result["verdict"]
     has_c2pa = result["results"].get("has_c2pa", False)
 
-    verdict_display = {
-        "high_risk":   "YUKSEK RISK",
-        "medium_risk": "ORTA RISK",
-        "low_risk":    "DUSUK RISK",
-        "no_data":     "VERI YOK",
-        "error":       "HATA"
-    }
-
-    print(f"    Skor:     {score:.4f} → {verdict_display.get(verdict, verdict)}")
+    print(f"    Skor:     {score:.4f} → {RISK_LABELS.get(verdict, verdict)}")
 
     if has_c2pa:
         creator = result["results"].get("creator", {})
@@ -134,7 +133,11 @@ def print_pin_a2_summary(result: dict):
         source_type = result["results"].get("digital_source_type", {})
 
         issuer = creator.get("issuer", "Bilinmiyor")
-        tool_name = tool.get("claim_generator_parsed") or tool.get("claim_generator") or "Bilinmiyor"
+        tool_name = (
+            tool.get("claim_generator_parsed")
+            or tool.get("claim_generator")
+            or "Bilinmiyor"
+        )
         sw_agent = tool.get("software_agent")
         sig_time = timestamp.get("signature_time", "Yok")
         is_valid = "GECERLI" if validation.get("is_valid") else "HATALI"
@@ -156,31 +159,21 @@ def print_pin_a2_summary(result: dict):
 
 
 def print_pin_a3_summary(result: dict):
-    """PIN-A3 sonucunu terminalde gösterir."""
+    """Render the PIN-A3 Error Level Analysis result."""
     score = result["score"]
     verdict = result["verdict"]
 
-    verdict_display = {
-        "high_risk":   "YUKSEK RISK",
-        "medium_risk": "ORTA RISK",
-        "low_risk":    "DUSUK RISK",
-        "no_data":     "VERI YOK",
-        "error":       "HATA"
-    }
-
-    print(f"    Skor:     {score:.4f} → {verdict_display.get(verdict, verdict)}")
+    print(f"    Skor:     {score:.4f} → {RISK_LABELS.get(verdict, verdict)}")
 
     if verdict == "no_data":
         print(f"    ELA:      Sinyal yetersiz — sonuc guvenilir degil")
         return
 
-    # Format bilgisi
     src_fmt = result["results"].get("source_format", {})
     fmt_ext = src_fmt.get("file_extension", "?")
     comp_type = src_fmt.get("compression_type", "?")
     print(f"    Format:   {fmt_ext.upper()} ({comp_type})")
 
-    # Uniformity
     uniformity = result["results"].get("uniformity", {})
     u_cat = uniformity.get("category", "?")
     u_score = uniformity.get("uniformity_score", 0)
@@ -188,52 +181,45 @@ def print_pin_a3_summary(result: dict):
         "very_uniform": "COK UNIFORM",
         "uniform": "UNIFORM",
         "moderate": "ORTA",
-        "varied": "CESITLI"
+        "varied": "CESITLI",
     }
     print(f"    Uniform:  {u_display.get(u_cat, u_cat)} ({u_score:.1f}) [zayif sinyal]")
 
-    # Global stats
     gs = result["results"].get("global_stats", {})
-    print(f"    ELA Ort:  {gs.get('mean', 0):.1f} | Std: {gs.get('std', 0):.1f} | Max: {gs.get('max', 0):.1f}")
+    print(
+        f"    ELA Ort:  {gs.get('mean', 0):.1f} | "
+        f"Std: {gs.get('std', 0):.1f} | Max: {gs.get('max', 0):.1f}"
+    )
 
-    # Anomaliler (hotspot + coldspot)
     hotspots = result["results"].get("manipulation_regions", [])
     if hotspots:
         hot = sum(1 for h in hotspots if h.get("type") == "hotspot")
         cold = sum(1 for h in hotspots if h.get("type") == "coldspot")
         high = sum(1 for h in hotspots if h.get("severity") == "high")
-        print(f"    Anomali:  {len(hotspots)} bolge ({hot} hotspot + {cold} coldspot, {high} yuksek) [guclu sinyal]")
+        print(
+            f"    Anomali:  {len(hotspots)} bolge "
+            f"({hot} hotspot + {cold} coldspot, {high} yuksek) [guclu sinyal]"
+        )
     else:
         print(f"    Anomali:  Yok")
 
-    # Dominant signal
     bd = result["results"].get("score_breakdown", {}).get("_total", {})
-    dom = bd.get("dominant_signal", "?")
-    if dom == "hotspot":
+    if bd.get("dominant_signal") == "hotspot":
         print(f"    Karar:    Manipulasyon tespit edildi")
     else:
         print(f"    Karar:    Manipulasyon izi yok — ELA destekleyici sinyal")
 
-    # Heatmap
     heatmap = result["results"].get("ela_heatmap")
     if heatmap:
         print(f"    Heatmap:  {Path(heatmap).name}")
 
 
 def print_pin_a4_summary(result: dict):
-    """PIN-A4 sonucunu terminalde gösterir."""
+    """Render the PIN-A4 face detection result."""
     score = result["score"]
     verdict = result["verdict"]
 
-    verdict_display = {
-        "high_risk":   "YUKSEK RISK",
-        "medium_risk": "ORTA RISK",
-        "low_risk":    "DUSUK RISK",
-        "no_data":     "VERI YOK",
-        "error":       "HATA"
-    }
-
-    print(f"    Skor:     {score:.4f} → {verdict_display.get(verdict, verdict)}")
+    print(f"    Skor:     {score:.4f} → {RISK_LABELS.get(verdict, verdict)}")
 
     face_count = result["results"].get("face_count", 0)
     has_faces = result["results"].get("has_faces", False)
@@ -249,8 +235,7 @@ def print_pin_a4_summary(result: dict):
 
     print(f"    Yuz:      {face_count} yuz tespit edildi")
 
-    faces = result["results"].get("faces", [])
-    for face in faces:
+    for face in result["results"].get("faces", []):
         fid = face["face_id"]
         bbox = face["bounding_box"]
         conf = bbox["confidence"]
@@ -274,104 +259,51 @@ def print_pin_a4_summary(result: dict):
         )
 
 
-def print_pin_b1_summary(result: dict):
-    """PIN-B1 sonucunu terminalde gösterir."""
+def _print_binary_detector(result: dict, prob_key: str,
+                           conf_key: str, verdict_key: str):
+    """Shared renderer for the binary Layer 2 detectors (B1, B2, B3)."""
     score = result["score"]
     verdict = result["verdict"]
+    results = result["results"]
 
-    verdict_display = {
-        "high_risk":   "YUKSEK RISK",
-        "medium_risk": "ORTA RISK",
-        "low_risk":    "DUSUK RISK",
-        "error":       "HATA"
-    }
+    print(f"    Skor:     {score:.4f} → {RISK_LABELS.get(verdict, verdict)}")
+    print(f"    Karar:    {results.get(verdict_key, '?')}")
+    print(f"    Fake:     {results.get(prob_key, 0):.4f}")
+    print(f"    Guven:    {results.get(conf_key, 0):.4f}")
 
-    print(f"    Skor:     {score:.4f} → {verdict_display.get(verdict, verdict)}")
 
-    clip_verdict = result["results"].get("clip_verdict", "?")
-    clip_prob = result["results"].get("clip_prob", 0)
-    clip_conf = result["results"].get("clip_confidence", 0)
-
-    print(f"    Karar:    {clip_verdict}")
-    print(f"    Fake:     {clip_prob:.4f}")
-    print(f"    Guven:    {clip_conf:.4f}")
+def print_pin_b1_summary(result: dict):
+    """Render the PIN-B1 CLIP result."""
+    _print_binary_detector(result, "clip_prob", "clip_confidence", "clip_verdict")
 
 
 def print_pin_b2_summary(result: dict):
-    """PIN-B2 sonucunu terminalde gösterir."""
-    score = result["score"]
-    verdict = result["verdict"]
-
-    verdict_display = {
-        "high_risk":   "YUKSEK RISK",
-        "medium_risk": "ORTA RISK",
-        "low_risk":    "DUSUK RISK",
-        "error":       "HATA"
-    }
-
-    print(f"    Skor:     {score:.4f} → {verdict_display.get(verdict, verdict)}")
-
-    siglip_verdict = result["results"].get("siglip_verdict", "?")
-    siglip_prob = result["results"].get("siglip_prob", 0)
-    siglip_conf = result["results"].get("siglip_confidence", 0)
-
-    print(f"    Karar:    {siglip_verdict}")
-    print(f"    Fake:     {siglip_prob:.4f}")
-    print(f"    Guven:    {siglip_conf:.4f}")
+    """Render the PIN-B2 SigLIP2 result."""
+    _print_binary_detector(result, "siglip_prob", "siglip_confidence",
+                           "siglip_verdict")
 
 
 def print_pin_b3_summary(result: dict):
-    """PIN-B3 sonucunu terminalde gösterir."""
-    score = result["score"]
-    verdict = result["verdict"]
-
-    verdict_display = {
-        "high_risk":   "YUKSEK RISK",
-        "medium_risk": "ORTA RISK",
-        "low_risk":    "DUSUK RISK",
-        "error":       "HATA"
-    }
-
-    print(f"    Skor:     {score:.4f} → {verdict_display.get(verdict, verdict)}")
-
-    freq_verdict = result["results"].get("freq_verdict", "?")
-    freq_prob = result["results"].get("freq_prob", 0)
-    freq_conf = result["results"].get("freq_confidence", 0)
-
-    print(f"    Karar:    {freq_verdict}")
-    print(f"    Fake:     {freq_prob:.4f}")
-    print(f"    Guven:    {freq_conf:.4f}")
+    """Render the PIN-B3 frequency analysis result."""
+    _print_binary_detector(result, "freq_prob", "freq_confidence", "freq_verdict")
 
 
 def print_pin_b4_summary(result: dict):
-    """PIN-B4 sonucunu terminalde gösterir."""
+    """Render the PIN-B4 three-class Independent Core result."""
     score = result["score"]
     verdict = result["verdict"]
+    results = result["results"]
 
-    verdict_display = {
-        "high_risk":   "YUKSEK RISK",
-        "medium_risk": "ORTA RISK",
-        "low_risk":    "DUSUK RISK",
-        "error":       "HATA"
-    }
-
-    print(f"    Skor:     {score:.4f} → {verdict_display.get(verdict, verdict)}")
-
-    predicted_class = result["results"].get("predicted_class", "?")
-    ai_prob = result["results"].get("ai_prob", 0)
-    deepfake_prob = result["results"].get("deepfake_prob", 0)
-    real_prob = result["results"].get("real_prob", 0)
-    confidence = result["results"].get("confidence", 0)
-
-    print(f"    Karar:    {predicted_class}")
-    print(f"    AI:       {ai_prob:.4f}")
-    print(f"    Deepfake: {deepfake_prob:.4f}")
-    print(f"    Real:     {real_prob:.4f}")
-    print(f"    Guven:    {confidence:.4f}")
+    print(f"    Skor:     {score:.4f} → {RISK_LABELS.get(verdict, verdict)}")
+    print(f"    Karar:    {results.get('predicted_class', '?')}")
+    print(f"    AI:       {results.get('ai_prob', 0):.4f}")
+    print(f"    Deepfake: {results.get('deepfake_prob', 0):.4f}")
+    print(f"    Real:     {results.get('real_prob', 0):.4f}")
+    print(f"    Guven:    {results.get('confidence', 0):.4f}")
 
 
 def print_pin_d1_summary(result: dict):
-    """PIN-D1 (Grad-CAM) sonucunu terminalde gösterir."""
+    """Render the PIN-D1 Grad-CAM result."""
     verdict = result["verdict"]
     r = result["results"]
 
@@ -386,9 +318,8 @@ def print_pin_d1_summary(result: dict):
 
     model_tags = [t for t in ("clip", "siglip", "freq") if t in heatmaps]
     print(f"    Modeller: {', '.join(model_tags) if model_tags else 'yok'}")
+    print(f"    Odak:     {len(focus.get('combined', []))} bolge (birlesik harita)")
 
-    combined_focus = focus.get("combined", [])
-    print(f"    Odak:     {len(combined_focus)} bolge (birlesik harita)")
     if agreement is not None:
         print(f"    Uyum:     CLIP-SigLIP IoU = {agreement:.2f}")
 
@@ -400,19 +331,19 @@ def print_pin_d1_summary(result: dict):
 
 
 def print_pin_d2_summary(result: dict):
-    """PIN-D2 (Anomaly Localization) sonucunu terminalde gösterir."""
+    """Render the PIN-D2 anomaly localisation result."""
     score = result["score"]
     verdict = result["verdict"]
     r = result["results"]
 
-    verdict_display = {
+    evidence_labels = {
         "high_risk":   "GUCLU KANIT",
         "medium_risk": "ORTA KANIT",
         "low_risk":    "ZAYIF KANIT",
-        "error":       "HATA"
+        "error":       "HATA",
     }
 
-    print(f"    Kanit:    {score:.4f} → {verdict_display.get(verdict, verdict)}")
+    print(f"    Kanit:    {score:.4f} → {evidence_labels.get(verdict, verdict)}")
 
     if verdict == "error":
         print(f"    Hata:     {result['details']}")
@@ -432,68 +363,140 @@ def print_pin_d2_summary(result: dict):
         print(f"    Gorsel:   {Path(annotated).name}")
 
 
-# Terminal özet fonksiyonları — pipeline bittiğinde bu sırayla yazdırılır
+def print_pin_e1_summary(result: dict):
+    """Render the PIN-E1 final adjudication."""
+    r = result["results"]
+
+    if result["verdict"] == "error":
+        print(f"    Hata:     {result['details']}")
+        return
+
+    mode = r.get("reasoning_mode", "?")
+    mode_label = {
+        "llm": "LLM muhakemesi",
+        "rule_based_fallback": "Kural tabanli yedek (LLM devre disi)",
+    }.get(mode, mode)
+
+    print(f"    KARAR:    {r.get('final_verdict', '?')}")
+    print(f"    Olasilik: {r.get('fake_probability', 0):.4f}")
+    print(f"    Guven:    {r.get('confidence', 0):.4f}")
+    print(f"    Kural:    {r.get('applied_rule') or '-'}")
+    print(f"    Mod:      {mode_label}")
+
+    for flag in r.get("failure_mode_flags", []):
+        print(f"    Uyari:    Olasi hata modu — {flag}")
+
+    evidence = r.get("decisive_evidence", [])
+    if evidence:
+        print(f"    Kanit:")
+        for item in evidence[:3]:
+            text = item if len(item) <= 88 else item[:85] + "..."
+            print(f"              - {text}")
+
+    metadata = r.get("llm_metadata", {})
+    if metadata.get("total_tokens"):
+        print(
+            f"    Token:    {metadata['total_tokens']} "
+            f"({metadata.get('model', '?')})"
+        )
+
+    report = (r.get("report") or "").strip()
+    if report:
+        print()
+        print("    ── Rapor ──")
+        for paragraph in report.split("\n"):
+            paragraph = paragraph.strip()
+            if not paragraph:
+                continue
+            # Wrap to terminal width without breaking words
+            line = "    "
+            for word in paragraph.split():
+                if len(line) + len(word) + 1 > 76:
+                    print(line)
+                    line = "    " + word
+                else:
+                    line = f"{line} {word}" if line.strip() else line + word
+            if line.strip():
+                print(line)
+            print()
+
+    recommendation = (r.get("recommendation") or "").strip()
+    if recommendation:
+        print(f"    Oneri:    {recommendation}")
+
+
+# Rendered in this fixed order once the parallel run completes, so that
+# concurrent execution never affects the readability of the report.
 PIN_DISPLAY_ORDER = [
-    ("PIN-A1", "PIN-A1 (Metadata)",           print_pin_a1_summary),
-    ("PIN-A2", "PIN-A2 (C2PA Provenance)",    print_pin_a2_summary),
-    ("PIN-A3", "PIN-A3 (ELA)",                print_pin_a3_summary),
-    ("PIN-A4", "PIN-A4 (Yuz Tespiti)",        print_pin_a4_summary),
-    ("PIN-B1", "PIN-B1 (CLIP Detection)",     print_pin_b1_summary),
-    ("PIN-B2", "PIN-B2 (SigLIP2 Detection)",  print_pin_b2_summary),
-    ("PIN-B3", "PIN-B3 (Frekans Analizi)",    print_pin_b3_summary),
-    ("PIN-B4", "PIN-B4 (Independent Core)",   print_pin_b4_summary),
-    ("PIN-D1", "PIN-D1 (Grad-CAM XAI)",       print_pin_d1_summary),
+    ("PIN-A1", "PIN-A1 (Metadata)",             print_pin_a1_summary),
+    ("PIN-A2", "PIN-A2 (C2PA Provenance)",      print_pin_a2_summary),
+    ("PIN-A3", "PIN-A3 (ELA)",                  print_pin_a3_summary),
+    ("PIN-A4", "PIN-A4 (Yuz Tespiti)",          print_pin_a4_summary),
+    ("PIN-B1", "PIN-B1 (CLIP Detection)",       print_pin_b1_summary),
+    ("PIN-B2", "PIN-B2 (SigLIP2 Detection)",    print_pin_b2_summary),
+    ("PIN-B3", "PIN-B3 (Frekans Analizi)",      print_pin_b3_summary),
+    ("PIN-B4", "PIN-B4 (Independent Core)",     print_pin_b4_summary),
+    ("PIN-D1", "PIN-D1 (Grad-CAM XAI)",         print_pin_d1_summary),
     ("PIN-D2", "PIN-D2 (Anomali Lokalizasyon)", print_pin_d2_summary),
+    ("PIN-E1", "PIN-E1 (LLM Muhakeme Motoru)",  print_pin_e1_summary),
 ]
 
 
 def _prewarm_imports():
     """
-    transformers lazy-import kullanır ve İLK import thread-safe DEĞİLDİR:
-    iki pin paralel thread'lerde aynı anda ilk kez 'from transformers
-    import X' yaparsa import yarış durumuna düşüp sahte ImportError
-    üretebilir. Bu yüzden pinlerin kullandığı tüm semboller paralel
-    çalışma başlamadan ÖNCE ana thread'de bir kez çözülür — sonraki
-    importlar basit sözlük erişimi olur (thread-safe).
+    Resolve every transformers symbol on the main thread before the
+    concurrent stage begins.
+
+    The transformers package resolves submodules lazily. That first
+    resolution is not thread-safe: when two pins execute
+    `from transformers import X` simultaneously on separate threads, the
+    import machinery can observe a partially initialised module and
+    raise a spurious ImportError. Warming the cache here reduces every
+    later import to a dictionary lookup, which is safe.
     """
     from transformers import (          # noqa: F401
-        CLIPModel, CLIPProcessor,                       # PIN-B1
-        AutoModel, AutoProcessor,                       # PIN-B2
+        CLIPModel, CLIPProcessor,                          # PIN-B1
+        AutoModel, AutoProcessor,                          # PIN-B2
         AutoImageProcessor, SiglipForImageClassification,  # PIN-B4
     )
 
 
 def build_pipeline() -> PinPipeline:
     """
-    PIN Architecture bağımlılık grafiğini kurar.
+    Construct the PIN Architecture dependency graph.
 
-    Katman 1 + Katman 2'nin 8 pini tamamen bağımsızdır → PARALEL.
-    XAI pinleri model kararlarını görselleştirdiği için Katman 2
-    çıktısını bekler:
-        PIN-D1 ← PIN-B1, PIN-B2, PIN-B3  (model instance + skor paylaşımı)
-        PIN-D2 ← PIN-A3 (ELA bölgeleri), PIN-D1 (CAM), PIN-B3 (frekans)
+    The eight pins of Layers 1 and 2 are mutually independent and
+    therefore execute concurrently. Only the reasoning stages declare
+    dependencies:
+
+        PIN-D1 <- B1, B2, B3       (shares the loaded model instances)
+        PIN-D2 <- A3, B3, D1       (ELA regions + Grad-CAM activation map)
+        PIN-E1 <- every upstream pin (terminal adjudication node)
     """
     _prewarm_imports()
 
     pipeline = PinPipeline(max_workers=8)
 
-    # Katman 1 — bağımsız
+    # Layer 1 — independent
     pipeline.add_pin(PinA1Metadata())
     pipeline.add_pin(PinA2C2pa())
     pipeline.add_pin(PinA3Ela())
     pipeline.add_pin(PinA4Face())
 
-    # Katman 2 — bağımsız
+    # Layer 2 — independent
     pipeline.add_pin(PinB1Clip())
     pipeline.add_pin(PinB2Siglip())
     pipeline.add_pin(PinB3Freq())
     pipeline.add_pin(PinB4IndependentCore())
 
-    # Katman 4 — XAI (bağımlı)
+    # Layer 4 — explainability (dependent)
     pipeline.add_pin(PinD1GradCam(),
                      depends_on=["PIN-B1", "PIN-B2", "PIN-B3"])
     pipeline.add_pin(PinD2AnomalyLocalization(),
                      depends_on=["PIN-A3", "PIN-B3", "PIN-D1"])
+
+    # Layer 5 — adjudication (terminal node)
+    pipeline.add_pin(PinE1LLMReasoning(), depends_on=list(UPSTREAM_PINS))
 
     return pipeline
 
@@ -502,11 +505,9 @@ def main():
     input_dir = PROJECT_ROOT / "input"
     output_dir = PROJECT_ROOT / "outputs"
 
-    # Klasörleri oluştur
     input_dir.mkdir(exist_ok=True)
     output_dir.mkdir(exist_ok=True)
 
-    # Görselleri bul
     images = find_images(input_dir)
 
     if not images:
@@ -529,9 +530,10 @@ def main():
     print("  DeepReality — Analiz Sistemi (Paralel PIN Architecture)")
     print(f"  {len(images)} gorsel bulundu")
     print("  Layer 1: PIN-A1 (Metadata) + PIN-A2 (C2PA) + PIN-A3 (ELA) + PIN-A4 (Yuz)")
-    print("  Layer 2: PIN-B1 (CLIP) + PIN-B2 (SigLIP2) + PIN-B3 (Frekans) + PIN-B4 (Independent Core)")
+    print("  Layer 2: PIN-B1 (CLIP) + PIN-B2 (SigLIP2) + PIN-B3 (Frekans) + PIN-B4 (Core)")
     print("  Layer 4: PIN-D1 (Grad-CAM) + PIN-D2 (Anomali Lokalizasyon)")
-    print("  Bagimsiz pinler PARALEL calisir; XAI pinleri model ciktisini bekler")
+    print("  Layer 5: PIN-E1 (LLM Muhakeme Motoru — nihai karar)")
+    print("  Bagimsiz pinler PARALEL calisir; bagimli pinler otomatik siralanir")
     print("=" * 65)
 
     pipeline = build_pipeline()
@@ -541,14 +543,13 @@ def main():
         print(f"  [{i}/{len(images)}] {image_path.name}")
         print("-" * 65)
 
-        # Canlı ilerleme: her pin bittiği anda tek satır
         def on_pin_complete(pin_id, result, duration):
+            """Live progress line, emitted the moment each pin finishes."""
             status = "OK " if result["status"] == "success" else "HATA"
             print(f"    [{status}] {pin_id:<7} {duration:6.2f}s")
 
         run = pipeline.run(str(image_path), on_pin_complete=on_pin_complete)
 
-        # Özetler (sabit sırada, pin bazında)
         for pin_id, title, print_fn in PIN_DISPLAY_ORDER:
             if pin_id not in run.results:
                 continue
@@ -566,12 +567,12 @@ def main():
     print()
     print("=" * 65)
     print(f"  Tamamlandi!")
-    print(f"  JSON ciktilar: outputs/ klasoru")
-    print(f"  Her gorsel icin: *_PIN-A1 ... *_PIN-B4 + *_PIN-D1 + *_PIN-D2")
+    print(f"  JSON ciktilar:      outputs/ klasoru (gorsel basina 11 JSON)")
     print(f"  ELA heatmap'ler:    outputs/*_ELA_heatmap.png")
     print(f"  Yuz kirpmalari:     outputs/*_face_*.png")
     print(f"  Grad-CAM (XAI):     outputs/*_XAI_D1_*.png")
     print(f"  Anomali haritasi:   outputs/*_XAI_D2_anomaly.png")
+    print(f"  Nihai karar:        outputs/*_PIN-E1.json")
     print("=" * 65)
     print()
 
