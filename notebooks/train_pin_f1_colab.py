@@ -35,6 +35,14 @@ PROFILE_FIRST = 3      # print per-pin timings for the first N images
 TORCH_THREADS = 4      # intra-op threads per PyTorch call
 
 TRAIN_DATASET = "Hemg/deepfake-and-real-images"      # 0=Fake, 1=Real
+
+# A second corpus measures transfer across generator distributions, which is
+# the figure that matters. OpenFake ships large parquet shards and its first
+# read often times out on a Colab connection; the hub client retries with
+# backoff and normally recovers within a few minutes. Set this to False to
+# skip it — the run still reserves a genuine held-out test split from the
+# training corpus, so an honest estimate exists either way.
+USE_CROSS_DATASET_HOLDOUT = True
 HOLDOUT_DATASET = "ComplexDataLab/OpenFake"
 HOLDOUT_CONFIG  = "core"                             # this corpus requires a config
 
@@ -106,10 +114,17 @@ if missing:
         f"Present: {sorted(os.listdir(drive_models))}"
     )
 
+# Copy rather than symlink. torch.load streams the whole tensor file, and
+# reading three gigabytes through the Drive FUSE mount costs minutes on
+# every run; a one-off copy to local disk is paid once and read at disk
+# speed thereafter.
 for name in REQUIRED_WEIGHTS:
     dst = os.path.join(repo_models, name)
     if not os.path.exists(dst):
-        os.symlink(os.path.join(drive_models, name), dst)
+        src = os.path.join(drive_models, name)
+        size_gb = os.path.getsize(src) / 1e9
+        print(f"  copying {name} ({size_gb:.2f} GB) to local disk...", flush=True)
+        shutil.copy(src, dst)
 
 # PIN-B4 is a public pretrained model, so its weights are fetched directly
 # rather than requiring a manual upload. The two small config files ship
@@ -199,16 +214,19 @@ train_rows = take_balanced(
     TRAIN_DATASET, N_TRAIN, "label",
     lambda v: 1 if int(v) == 0 else 0)
 
-try:
-    holdout_rows = take_balanced(
-        HOLDOUT_DATASET, N_HOLDOUT, "label",
-        lambda v: 1 if str(v).lower() in ("fake", "1", "true") else 0,
-        split="test", cfg=HOLDOUT_CONFIG)
-except Exception as e:
-    print(f"  Holdout corpus unavailable ({type(e).__name__}: {e})")
-    print("  Continuing without a cross-dataset holdout; the calibration")
-    print("  split still provides an in-distribution estimate.")
-    holdout_rows = []
+holdout_rows = []
+if USE_CROSS_DATASET_HOLDOUT:
+    try:
+        holdout_rows = take_balanced(
+            HOLDOUT_DATASET, N_HOLDOUT, "label",
+            lambda v: 1 if str(v).lower() in ("fake", "1", "true") else 0,
+            split="test", cfg=HOLDOUT_CONFIG)
+    except Exception as e:
+        print(f"  Cross-dataset corpus unavailable ({type(e).__name__}: {e})")
+        print("  Continuing without it; the reserved test split below still")
+        print("  provides a genuine in-distribution estimate.")
+else:
+    print("  Cross-dataset holdout disabled by configuration.")
 
 # ----------------------------------------------------------------------------
 hdr("5 · FEATURE EXTRACTION")
@@ -261,7 +279,6 @@ def suppress_artefacts():
     PinD1GradCam._save_overlay = (
         lambda self, image_bgr, cam_full, file_stem, tag: ""
     )
-    PinA4Face._save_face_crop = getattr(PinA4Face, "_save_face_crop", None)
 
 suppress_artefacts()
 
@@ -334,7 +351,13 @@ def extract(rows, tag):
     for i in range(start, len(rows)):
         raw, y = rows[i]
         n = i + 1
-        path = os.path.join(WORK, f"{tag}_{n:06d}")
+        # The extension matters: PIN-A3 classifies the source as lossy or
+        # lossless from it, and that classification gates how much weight
+        # the ELA uniformity signal is allowed to carry. Writing an
+        # extensionless file would make every sample look lossless.
+        ext = {b"\xff\xd8\xff": ".jpg", b"\x89PN": ".png",
+               b"RIFF": ".webp", b"GIF": ".gif"}.get(raw[:3], ".jpg")
+        path = os.path.join(WORK, f"{tag}_{n:06d}{ext}")
         try:
             with open(path, "wb") as fh:
                 fh.write(raw)
