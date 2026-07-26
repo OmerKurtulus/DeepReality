@@ -515,3 +515,50 @@ LLM_CONFIG = {
     # Persist the exact prompt payload alongside the result for auditability
     "save_prompt_transcript": True,
 }
+
+# ──────────────────────────────────────────────
+# LAYER 6 — ENSEMBLE FUSION
+# PIN-F1: stacked meta-learner over the pin score vector
+# ──────────────────────────────────────────────
+ENSEMBLE_CONFIG = {
+    # Trained artefacts. Absent until the meta-learner has been fitted;
+    # the pin reports a transparent baseline in the meantime.
+    "model_path": str(PROJECT_ROOT / "models" / "pin_f1_xgboost.json"),
+    "metadata_path": str(PROJECT_ROOT / "models" / "pin_f1_metadata.json"),
+
+    # Binary decision boundary applied to the calibrated probability.
+    "decision_threshold": 0.50,
+
+    # Verdict bands, consistent with the other pins.
+    "thresholds": {
+        "high_risk": 0.70,
+        "medium_risk": 0.40,
+    },
+
+    # Fallback weights used only while the model is untrained. These
+    # reflect the design rationale of the detection core: the frozen
+    # backbone generalises best, the frequency model contributes a
+    # disjoint domain, and the three-class core votes independently.
+    "baseline_weights": {"b1": 0.35, "b2": 0.25, "b3": 0.20, "b4": 0.20},
+
+    # Number of contributing features named in the output.
+    "report_top_features": 6,
+
+    # ── Training defaults, consumed by the Colab notebook ──
+    "training": {
+        "n_estimators": 400,
+        "max_depth": 4,
+        "learning_rate": 0.05,
+        "subsample": 0.85,
+        "colsample_bytree": 0.85,
+        "min_child_weight": 5,
+        "reg_lambda": 1.5,
+        "early_stopping_rounds": 40,
+        "cv_folds": 5,
+        "random_state": 42,
+        # Shallow trees and strong regularisation are deliberate: the
+        # design matrix has roughly fifty columns and a realistic corpus
+        # supplies only thousands of rows, so an unconstrained booster
+        # memorises the training split instead of learning the fusion.
+    },
+}

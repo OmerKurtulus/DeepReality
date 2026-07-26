@@ -22,3 +22,8 @@ PyWavelets>=1.5.0       # PIN-B3: DWT wavelet decomposition
 
 # Layer 5 — LLM Reasoning Engine
 requests>=2.31.0        # PIN-E1: OpenAI-compatible chat-completions client
+
+# Layer 6 — Ensemble Fusion
+xgboost>=2.0.0          # PIN-F1: gradient-boosted meta-learner
+scikit-learn>=1.4.0     # PIN-F1: Platt calibration, evaluation metrics
+# macOS note: xgboost requires the OpenMP runtime -> brew install libomp

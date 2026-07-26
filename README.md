@@ -1,8 +1,16 @@
-# DeepReality
+![DeepReality](docs/banner.svg)
+
+<p align="center">
+  <img src="https://img.shields.io/badge/layers-6-141413?style=flat-square&labelColor=E6E3D8" alt="6 layers">
+  <img src="https://img.shields.io/badge/pins-15-141413?style=flat-square&labelColor=E6E3D8" alt="15 pins">
+  <img src="https://img.shields.io/badge/python-3.10%2B-141413?style=flat-square&labelColor=E6E3D8" alt="Python 3.10+">
+  <img src="https://img.shields.io/badge/execution-concurrent%20DAG-141413?style=flat-square&labelColor=E6E3D8" alt="Concurrent DAG">
+  <img src="https://img.shields.io/badge/paradigms-spatial%20%C2%B7%20frequency%20%C2%B7%20provenance-6E6B63?style=flat-square&labelColor=E6E3D8" alt="Paradigms">
+</p>
 
 **A multi-layer forensic architecture for detecting AI-generated and manipulated imagery.**
 
-DeepReality combines several mutually independent analytical paradigms — documentary provenance, compression physics, spatial deep learning, frequency-domain analysis and language-model reasoning — within a single modular pipeline. It is designed to address the central weakness of contemporary detection tools: the *generalisation gap*, whereby systems built on one model architecture recognise only the manipulation techniques present in their training distribution and degrade sharply on unseen generators.
+DeepReality combines several mutually independent analytical paradigms — documentary provenance, compression physics, spatial deep learning, frequency-domain analysis, language-model reasoning and statistical ensemble fusion — within a single modular pipeline. It is designed to address the central weakness of contemporary detection tools: the *generalisation gap*, whereby systems built on one model architecture recognise only the manipulation techniques present in their training distribution and degrade sharply on unseen generators.
 
 ![DeepReality PIN Architecture](docs/architecture.svg)
 
@@ -365,13 +373,52 @@ Let the predicates be:
 
 **Purpose.** A calibrated numerical counterpart to the language model's qualitative adjudication, and a cross-check against it.
 
-**Method.** Stacked generalisation over the pin score vector. The base learners are the pins themselves; the meta-learner is a gradient-boosted tree ensemble trained on their outputs against ground-truth labels. Feature inputs comprise the Layer 2 probabilities and confidences, the Layer 1 provenance signals as categorical indicators, the ELA anomaly statistics, the PIN-D1 cross-model agreement IoU and the PIN-D2 localisation-evidence score.
+**Method.** Stacked generalisation over the pin score vector. The base learners are the pins themselves; the meta-learner is a gradient-boosted tree ensemble fitted to their outputs against ground-truth labels, then probability-calibrated.
 
-**Rationale for trees over a linear blend.** The optimal combination is not linear. The value of a detector's output is *conditional* on the evidence around it — a high B2 score means something different when camera telemetry is present than when it is absent, and B1's dissent matters more when the subject resembles a photograph than when it does not. Gradient-boosted trees represent such interactions natively, whereas a fixed weighted average cannot express them at all.
+**Feature contract.** A single module (`layer6_ensemble/feature_extractor.py`) assembles the **54-dimensional** design matrix, and both training and inference import that same function. This eliminates the most common defect in stacked ensembles — a meta-learner scored against a vector assembled differently from the one it was trained on. The contract is versioned; the trained artefact records the schema version it was built against, and a mismatch raises a warning at inference rather than being silently mis-scored.
 
-**Cross-validation against Layer 5.** The two stages are deliberately redundant and derived differently: E1 reasons symbolically over an evidence hierarchy, F1 fits statistically to labelled outcomes. Agreement raises confidence in the result. **Divergence is surfaced to the operator rather than silently resolved**, because a disagreement between a symbolic and a statistical adjudicator of the same evidence is itself a meaningful finding — it marks the cases most deserving of human review.
+| Group | Features | Count |
+|---|---|---|
+| Tier 1/2 — provenance and telemetry | A1 signature/C2PA/camera/GPS/datetime flags, A2 manifest state | 15 |
+| Tier 4 — compression forensics | A3 score, anomaly counts, max deviation, ELA moments | 7 |
+| Context | A4 face count, confidence, area ratio, sharpness | 4 |
+| Tier 3 — detectors | B1–B3 probability and confidence, B4 three-class distribution | 10 |
+| Tier 3 — consensus | mean, min, max, spread, count flagging, count available | 6 |
+| Tier 4 — attention | D1 IoU and focus statistics, D2 evidence score and region counts | 8 |
+| Engineered interactions | telemetry–detector conflict, off-subject attention, spatial–frequency concordance, provenance strength | 4 |
 
-**Calibration.** Platt scaling maps raw ensemble output onto calibrated probabilities, so that a reported 0.80 corresponds to an empirical 80 % frequency. This matters for any operational deployment where a threshold carries consequences.
+**Missing evidence is NaN, not zero.** Zero is a measurement ("this detector reported 0.0"); NaN is an absence ("this detector did not run"). XGBoost learns a default traversal direction for NaN at every split, so the distinction survives into the model instead of being flattened at the input. This is what allows the ensemble to degrade coherently when a pin fails.
+
+**Rationale for trees over a linear blend.** The optimal combination is not linear, because the value of a detector's output is *conditional* on the evidence surrounding it. A high B2 score means something different when capture telemetry is present than when it is absent; B1's dissent carries more weight when the subject resembles a photograph; B3 agreeing with the spatial models is stronger corroboration than the spatial models agreeing with each other, because the domains are disjoint. Gradient-boosted trees represent such interactions natively. A weighted average cannot express them at all — it assigns each detector one influence for every possible input.
+
+Four interaction terms are nonetheless supplied explicitly rather than left to be discovered. A booster can in principle learn the computational-photography signature from `has_camera × consensus_mean`, but only with far more data than a realistic corpus provides. Supplying it directly is the difference between the model needing to learn the domain and the model being told it.
+
+**Scope, stated honestly.** The vector spans all four tiers, but F1 is expected to learn from Tiers 3 and 4 only, for two reasons. First, provenance is adjudicated by the ordered rule calculus of §7.2, not statistically: a signed producer declaration is a constraint, not a quantity to be regressed against. Second, public deepfake corpora are re-encoded during packaging, which strips EXIF and C2PA — provenance features are therefore near-constant across any realistic training set and carry no gradient. The training notebook reports which columns had zero variance so this is visible rather than assumed.
+
+**Cross-validation against Layer 5, and how to read divergence.** E1 reasons symbolically under an ordered hierarchy; F1 fits statistically to outcomes. They are redundant by design. **E1's verdict enters PIN-F1 only for comparison and is never a model input** — feeding it in would collapse the cross-check into an imitation of the language model and destroy the independence the comparison depends on.
+
+The same numeric gap means different things depending on which rule Layer 5 applied, and the pin classifies it accordingly:
+
+| Outcome | Condition | Reading |
+|---|---|---|
+| `concordant` | Both reach the same categorical conclusion | Supported by two independently derived methods |
+| `expected_divergence` | E1 applied R1/R2/R3 — a documentary rule | F1 lacks the deciding evidence; its dissent does **not** weaken the verdict |
+| `conflict` | E1 applied R4/R5 — statistical grounds | Genuine disagreement on shared evidence; `review_recommended` is set |
+
+Collapsing these three into a single "agreement" flag would produce a system that cries wolf on precisely its most reliable verdicts — every C2PA-signed image would register as a conflict.
+
+**Calibration.** Platt scaling maps raw booster output onto calibrated probabilities, so a reported 0.80 corresponds to an empirical 80 % frequency. Isotonic regression was rejected: at the sample sizes realistic for this stage it overfits the calibration set and produces a step function that is worse calibrated out of sample. The sigmoid is fitted on a split the booster never saw — calibrating on training scores is the classic error, producing excellent and meaningless numbers.
+
+**Untrained behaviour.** Before an artefact exists the pin reports `model_status: "untrained"` and emits a transparent weighted baseline, labelled as such. An untrained stage that returns a confident number is worse than one that returns none.
+
+**Training.** `notebooks/train_pin_f1_colab.py` is a single Colab cell that extracts features, fits, calibrates and evaluates. Two corpora are used deliberately: fitting on one distribution and measuring on another. Neither is a corpus the base detectors were trained on — a stacked meta-learner fitted to base-model outputs on their own training data learns from overfitted inputs and does not transfer.
+
+| Role | Corpus | Note |
+|---|---|---|
+| Training | `Hemg/deepfake-and-real-images` | 190 K rows, binary labels, unseen by B1–B4 |
+| Cross-dataset holdout | `ComplexDataLab/OpenFake` | 2025, multiple generators, separate test split |
+
+The notebook reports cross-dataset ROC-AUC, accuracy, F1, Brier score and Expected Calibration Error, alongside each individual detector's ROC-AUC on the same split — so the ensemble's contribution is measured against the bar it must clear, not asserted.
 
 ---
 
@@ -392,8 +439,15 @@ PIN-A1  PIN-A2  PIN-A3  PIN-A4  PIN-B1  PIN-B2  PIN-B3  PIN-B4     (concurrent)
                                            │
                             all upstream ──┤
                                            ▼
-                                        PIN-E1  ──►  PIN-F1  ──►  consensus
+                                        PIN-E1
+                                           │
+                    all upstream + E1 ─────┤
+                                           ▼
+                                        PIN-F1  ──►  consensus report
 ```
+
+PIN-F1 depends on PIN-E1 solely so the consensus comparison can be made in
+one place; E1's verdict is never a feature.
 
 `PinPipeline._validate()` rejects missing dependencies and cycles before execution. The scheduler dispatches every pin whose dependencies are satisfied and blocks on `FIRST_COMPLETED`, so a newly unblocked pin starts without waiting for unrelated work.
 
@@ -446,7 +500,7 @@ OPENROUTER_API_KEY=sk-or-v1-...
 DEEPREALITY_LLM_MODEL=google/gemma-4-26b-a4b-it:free
 ```
 
-The reasoning model is selected entirely from `.env` — any identifier from `openrouter.ai/models` works without a source change, and any OpenAI-compatible endpoint may be substituted through `DEEPREALITY_LLM_API_BASE`. Remaining defaults live in `config/settings.py` under `LLM_CONFIG`. Layers 1, 2 and 4 operate offline and require no credential.
+The reasoning model is selected entirely from `.env` — any identifier from `openrouter.ai/models` works without a source change, and any OpenAI-compatible endpoint may be substituted through `DEEPREALITY_LLM_API_BASE`. Remaining defaults live in `config/settings.py` under `LLM_CONFIG`. Layers 1, 2, 4 and 6 operate offline and require no credential.
 
 Note that the reasoning protocol is demanding — strict JSON output and multi-step evidence weighting. Free-tier models produce usable but shallower adjudications; a frontier model is recommended for production analysis.
 
@@ -470,6 +524,7 @@ Progress is reported per pin as it completes, followed by layer summaries and th
 | `{image}_face_N.png` | Detected and normalised face crops |
 | `{image}_XAI_D1_{model}.png` | Grad-CAM overlays (clip, siglip, freq, combined) |
 | `{image}_XAI_D2_anomaly.png` | Annotated anomaly map with fused regions marked |
+| `{image}_PIN-F1.json` | Calibrated ensemble score, feature vector, feature attribution, E1/F1 consensus |
 
 ### 10.5 Project structure
 
@@ -489,7 +544,11 @@ DeepReality/
 │   ├── prompts.py               # Forensic reasoning protocol
 │   ├── llm_client.py            # Provider client
 │   └── pin_e1_llm.py            # PIN-E1
-├── layer6_ensemble/             # PIN-F1
+├── layer6_ensemble/
+│   ├── feature_extractor.py     # 54-feature contract, shared by train and inference
+│   └── pin_f1_ensemble.py       # PIN-F1
+├── notebooks/
+│   └── train_pin_f1_colab.py    # Single-cell Colab training pipeline
 ├── models/                      # Trained weights — see models/README.md
 ├── input/                       # Images to analyse
 └── outputs/                     # Analysis results

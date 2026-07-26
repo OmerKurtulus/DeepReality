@@ -70,6 +70,9 @@ from layer4_xai.pin_d2_anomaly import PinD2AnomalyLocalization
 # Layer 5 — LLM Reasoning Engine
 from layer5_llm_reasoning.pin_e1_llm import PinE1LLMReasoning, UPSTREAM_PINS
 
+# Layer 6 — Ensemble Fusion
+from layer6_ensemble.pin_f1_ensemble import PinF1Ensemble, FEATURE_PINS
+
 # Parallel pin orchestrator
 from core.pipeline import PinPipeline
 
@@ -425,6 +428,73 @@ def print_pin_e1_summary(result: dict):
         print(f"    Oneri:    {recommendation}")
 
 
+def print_pin_f1_summary(result: dict):
+    """Render the PIN-F1 ensemble fusion result."""
+    r = result["results"]
+
+    if result["verdict"] == "error":
+        print(f"    Hata:     {result['details']}")
+        return
+
+    status_label = {
+        "trained": "Egitilmis model",
+        "untrained": "Egitilmemis — agirlikli taban cizgi",
+        "no_input": "Girdi yok",
+    }.get(r.get("model_status"), r.get("model_status"))
+
+    probability = r.get("fake_probability")
+    if probability is None:
+        print(f"    Skor:     uretilemedi")
+    else:
+        print(f"    Skor:     {probability:.4f} → {r.get('decision')}")
+    print(f"    Model:    {status_label}")
+    print(
+        f"    Oznitelik: {r.get('features_available')}/{r.get('features_total')} mevcut"
+    )
+
+    info = r.get("model_info", {})
+    metrics = info.get("holdout_metrics") or {}
+    if metrics:
+        print(
+            f"    Holdout:  ROC-AUC {metrics.get('roc_auc', '?')} | "
+            f"acc {metrics.get('accuracy', '?')} | ECE {metrics.get('ece', '?')}"
+        )
+
+    for feature in (r.get("top_features") or [])[:3]:
+        print(
+            f"    Katki:    {feature['feature']} = {feature['value']} "
+            f"(gain {feature['gain']})"
+        )
+
+    consensus = r.get("consensus", {})
+    if consensus.get("available"):
+        agreement_label = {
+            "concordant": "UYUMLU",
+            "expected_divergence": "BEKLENEN AYRISMA",
+            "conflict": "CELISKI — inceleme onerilir",
+            "indeterminate": "BELIRSIZ",
+        }.get(consensus.get("agreement"), consensus.get("agreement"))
+        print(f"    Uzlasma:  E1={consensus.get('e1_verdict')} "
+              f"({consensus.get('e1_applied_rule')}) vs F1 → {agreement_label}")
+        divergence = consensus.get("probability_divergence")
+        if divergence is not None:
+            print(f"    Fark:     {divergence:.4f}")
+        interpretation = consensus.get("interpretation", "")
+        if interpretation:
+            line = "    "
+            for word in interpretation.split():
+                if len(line) + len(word) + 1 > 76:
+                    print(line)
+                    line = "    " + word
+                else:
+                    line = f"{line} {word}" if line.strip() else line + word
+            if line.strip():
+                print(line)
+
+    if r.get("schema_warning"):
+        print(f"    UYARI:    {r['schema_warning']}")
+
+
 # Rendered in this fixed order once the parallel run completes, so that
 # concurrent execution never affects the readability of the report.
 PIN_DISPLAY_ORDER = [
@@ -439,6 +509,7 @@ PIN_DISPLAY_ORDER = [
     ("PIN-D1", "PIN-D1 (Grad-CAM XAI)",         print_pin_d1_summary),
     ("PIN-D2", "PIN-D2 (Anomali Lokalizasyon)", print_pin_d2_summary),
     ("PIN-E1", "PIN-E1 (LLM Muhakeme Motoru)",  print_pin_e1_summary),
+    ("PIN-F1", "PIN-F1 (Ensemble Fusion)",      print_pin_f1_summary),
 ]
 
 
@@ -495,8 +566,15 @@ def build_pipeline() -> PinPipeline:
     pipeline.add_pin(PinD2AnomalyLocalization(),
                      depends_on=["PIN-A3", "PIN-B3", "PIN-D1"])
 
-    # Layer 5 — adjudication (terminal node)
+    # Layer 5 — adjudication
     pipeline.add_pin(PinE1LLMReasoning(), depends_on=list(UPSTREAM_PINS))
+
+    # Layer 6 — ensemble fusion (terminal node). It depends on PIN-E1 only
+    # so that the consensus comparison can be made; E1's verdict is never
+    # a model input.
+    pipeline.add_pin(
+        PinF1Ensemble(), depends_on=list(FEATURE_PINS) + ["PIN-E1"]
+    )
 
     return pipeline
 
@@ -533,6 +611,7 @@ def main():
     print("  Layer 2: PIN-B1 (CLIP) + PIN-B2 (SigLIP2) + PIN-B3 (Frekans) + PIN-B4 (Core)")
     print("  Layer 4: PIN-D1 (Grad-CAM) + PIN-D2 (Anomali Lokalizasyon)")
     print("  Layer 5: PIN-E1 (LLM Muhakeme Motoru — nihai karar)")
+    print("  Layer 6: PIN-F1 (Ensemble Fusion — istatistiksel capraz dogrulama)")
     print("  Bagimsiz pinler PARALEL calisir; bagimli pinler otomatik siralanir")
     print("=" * 65)
 
