@@ -21,10 +21,11 @@ models/*.pt
 models/pin_b4_ai_deepfake_real/model.safetensors
 
 # ── Test images and analysis output ──
-# Excluded because the sample images are personal photographs.
-# The directory structure is preserved with .gitkeep.
+# Personal photographs are excluded; one AI-generated sample is tracked so
+# the pipeline can be exercised straight after cloning.
 input/*
 !input/.gitkeep
+!input/sample_ai_generated.png
 outputs/*
 !outputs/.gitkeep
 

@@ -1,4 +1,4 @@
-# DeepReality — Architecture Reference
+# DeepReality: Architecture Reference
 
 Technical companion to the [README](README.md). This document describes the internal contracts, the execution model and the responsibilities of each module. It is intended for readers extending the system rather than operating it.
 
@@ -70,7 +70,7 @@ PIN-A1  PIN-A2  PIN-A3  PIN-A4  PIN-B1  PIN-B2  PIN-B3  PIN-B4     (concurrent)
                                         PIN-F1  ->  consensus
 ```
 
-**Threads rather than processes.** PyTorch inference, NumPy/OpenCV kernels and file I/O all release the GIL, so threads achieve real parallelism on this workload. More importantly, the loaded models — several gigabytes in aggregate — are shared from memory rather than duplicated per process.
+**Threads rather than processes.** PyTorch inference, NumPy/OpenCV kernels and file I/O all release the GIL, so threads achieve real parallelism on this workload. More importantly, the loaded models, several gigabytes in aggregate, are shared from memory rather than duplicated per process.
 
 `PipelineRun` reports `total_time` (wall clock), `sequential_time` (summed pin runtime) and `speedup`. Measured speed-up on the test corpus is approximately 2×; the ceiling is set by the three heavyweight detectors contending for the same accelerator.
 
@@ -95,7 +95,7 @@ The `_pins` entry passes live object references, which is how PIN-D2 obtains PIN
 
 ## 2. Module reference
 
-### 2.1 Layer 1 — Preprocessing
+### 2.1 Layer 1: Preprocessing
 
 | Module | Responsibility |
 |---|---|
@@ -104,13 +104,13 @@ The `_pins` entry passes live object references, which is how PIN-D2 obtains PIN
 | `pin_a3_ela.py` | JPEG re-save at Q=90, per-pixel difference, 8×8 regional grid, MAD-based hotspot/coldspot detection, heatmap rendering |
 | `pin_a4_face.py` | MediaPipe BlazeFace detection, eye-axis alignment, 224×224 normalisation, quality metrics |
 
-**PIN-A1 scoring** is deliberately two-tier. Decisive evidence — a C2PA marker with a known AI issuer, or a high-confidence generator signature — establishes a score floor that overrides the weighted sum, because a producer's own declaration cannot be outvoted by an accumulation of weak heuristics. Absent such evidence, the weighted sum of nine signals applies.
+**PIN-A1 scoring** is deliberately two-tier. Decisive evidence (a C2PA marker with a known AI issuer, or a high-confidence generator signature) establishes a score floor that overrides the weighted sum, because a producer's own declaration cannot be outvoted by an accumulation of weak heuristics. Absent such evidence, the weighted sum of nine signals applies.
 
 **PIN-A2 chain traversal** exists because some providers place the informative claim in a parent manifest. OpenAI, for example, emits `c2pa.created` + `GPT-4o` + `trainedAlgorithmicMedia` in manifest 1 and only `c2pa.opened` in the active manifest. Reading the active manifest alone would miss the decisive evidence entirely.
 
 **PIN-A3 constraints** are documented in the source: ELA presupposes a lossy compression history, so its uniformity signal is unreliable on PNG and lossless WebP. Uniformity is capped as a weak supporting signal (max 0.25); anomaly detection, which is format-independent, carries the strong signal (max 0.85).
 
-### 2.2 Layer 2 — Detection Core
+### 2.2 Layer 2: Detection Core
 
 | Module | Architecture | Input | Trainable / total |
 |---|---|---|---|
@@ -125,9 +125,9 @@ Each module caches its model in a module-level global, so repeated instantiation
 
 **PIN-B4** is the only multi-class detector and supplies the AI-generated versus deepfake distinction that the binary detectors cannot express. Its ensemble-compatible score is `ai_prob + deepfake_prob`.
 
-### 2.3 Layer 4 — Explainability
+### 2.3 Layer 4: Explainability
 
-**`pin_d1_gradcam.py`** implements Grad-CAM without an external XAI dependency. The target layer is located by name (`encoder.layers.*.layer_norm1`, final block). Gradients are obtained through `torch.autograd.grad(logit, activation)` rather than a full `backward()`, so back-propagation terminates at the target layer — roughly twenty times cheaper than differentiating the entire 24-block ViT, and it never touches parameter `.grad` fields.
+**`pin_d1_gradcam.py`** implements Grad-CAM without an external XAI dependency. The target layer is located by name (`encoder.layers.*.layer_norm1`, final block). Gradients are obtained through `torch.autograd.grad(logit, activation)` rather than a full `backward()`, so back-propagation terminates at the target layer, roughly twenty times cheaper than differentiating the entire 24-block ViT, and it never touches parameter `.grad` fields.
 
 ViT token activations are reshaped onto the patch grid, with automatic CLS-token detection: if the token count is a perfect square the sequence has no CLS (SigLIP), and if `count - 1` is a perfect square the leading token is discarded (CLIP).
 
@@ -137,7 +137,7 @@ Raw CAM matrices are retained on the instance in `cam_cache` for PIN-D2 and are 
 
 One non-obvious gate is important: because the CAM is normalised, *every* image has a hottest region. When no detector reports synthesis, those regions indicate only where the model looked, not that anything is anomalous. CAM-only regions are therefore marked only when at least one Layer 2 model exceeds the medium-risk threshold. Without this gate the pin annotates clean images with meaningless boxes.
 
-### 2.4 Layer 5 — Adjudication
+### 2.4 Layer 5: Adjudication
 
 | Module | Responsibility |
 |---|---|
@@ -146,11 +146,11 @@ One non-obvious gate is important: because the CAM is normalised, *every* image 
 | `llm_client.py` | OpenAI-compatible client with retry and JSON recovery |
 | `pin_e1_llm.py` | PIN-E1: orchestration, response validation, deterministic fallback |
 
-**Evidence compression** applies three reductions — elimination (embeddings, model cards, landmark coordinates), aggregation (region lists to counts and extrema) and normalisation (uniform shape per pin). Measured reduction is 96–97 %, roughly 17,000 tokens to 620, with no loss of decision-relevant content.
+**Evidence compression** applies three reductions, elimination (embeddings, model cards, landmark coordinates), aggregation (region lists to counts and extrema) and normalisation (uniform shape per pin). Measured reduction is 96–97 %, roughly 17,000 tokens to 620, with no loss of decision-relevant content.
 
 **The reasoning protocol** (`prompts.SYSTEM_PROMPT`, ~3,900 tokens) specifies:
 
-1. An instrument reference — the physical or statistical basis of each pin, and its reliability characteristics.
+1. An instrument reference, the physical or statistical basis of each pin, and its reliability characteristics.
 2. A four-tier evidence hierarchy: decisive provenance, capture telemetry, learned detectors, localisation and attention.
 3. Documented failure modes, including the smartphone computational-photography false positive and correlated consensus among B1–B3.
 4. A deterministic conflict-resolution procedure (rules R1–R6) applied in order.
@@ -158,13 +158,13 @@ One non-obvious gate is important: because the CAM is normalised, *every* image 
 
 Static instrument characteristics live in the system prompt rather than the per-image payload, which keeps the digest small while preserving the interpretive context needed to weight each detector correctly.
 
-**Response handling.** `_normalise_response()` repairs recoverable deviations — verdict synonyms, out-of-range probabilities — rather than discarding an otherwise valid adjudication, and records the repair. `llm_client.extract_json_object()` recovers JSON from fenced or prose-wrapped responses.
+**Response handling.** `_normalise_response()` repairs recoverable deviations (verdict synonyms, out-of-range probabilities) rather than discarding an otherwise valid adjudication, and records the repair. `llm_client.extract_json_object()` recovers JSON from fenced or prose-wrapped responses.
 
 **Deterministic fallback.** When no credential is configured or the provider is unreachable, `_rule_based_adjudication()` applies a reduced form of the same hierarchy and returns a usable verdict marked `reasoning_mode: "rule_based_fallback"`. The system remains functional offline, at the cost of the narrative justification.
 
 **Auditability.** With `save_prompt_transcript` enabled, the exact prompt payload and raw response are written to `outputs/{stem}_PIN-E1_transcript.json`. A forensic conclusion that cannot be traced to the evidence and instructions that produced it has no evidentiary standing.
 
-### 2.5 Layer 6 — Ensemble Fusion
+### 2.5 Layer 6: Ensemble Fusion
 
 | Module | Responsibility |
 |---|---|
@@ -174,7 +174,7 @@ Static instrument characteristics live in the system prompt rather than the per-
 
 **One contract, two consumers.** Training and inference import the same
 `extract_features()`, which removes the most common defect in stacked
-ensembles — a meta-learner scored against a vector assembled differently
+ensembles, a meta-learner scored against a vector assembled differently
 from the one it was fitted on. The contract is versioned, and the trained
 artefact records the version it was built against so a mismatch warns
 rather than mis-scores silently.
@@ -190,7 +190,7 @@ Homebrew's OpenMP runtime while PyTorch bundles its own; loading both into
 one process and entering a parallel region segfaults the interpreter.
 Since every pin imports torch, the ensemble stage would crash on every
 prediction. `booster_eval.NativeBooster` traverses the saved JSON
-directly — a few thousand comparisons for a single row — which removes the
+directly, a few thousand comparisons for a single row, which removes the
 conflict and the dependency together. Equivalence with xgboost is asserted
 by `tests/test_booster_eval.py`, currently matching to 2.9e-07.
 
@@ -234,12 +234,12 @@ To add a pin:
 2. Add its configuration block to `config/settings.py`.
 3. Register it in `main.build_pipeline()` with its `depends_on` list.
 4. Add a summary renderer and an entry in `PIN_DISPLAY_ORDER`.
-5. If the pin should inform adjudication, extend `evidence_builder.py` and describe the instrument in `prompts.SYSTEM_PROMPT` — a pin the reasoning stage cannot interpret contributes nothing to the verdict.
+5. If the pin should inform adjudication, extend `evidence_builder.py` and describe the instrument in `prompts.SYSTEM_PROMPT`, a pin the reasoning stage cannot interpret contributes nothing to the verdict.
 
-The one remaining architectural stage is Layer 3 — video temporal analysis: frame consistency, lip-audio synchronisation and biological signal.
+The one remaining architectural stage is Layer 3, video temporal analysis: frame consistency, lip-audio synchronisation and biological signal.
 
 ---
 
 ## 5. Language conventions
 
-Source comments, docstrings and developer-facing error messages are written in English. Strings that reach the end user — the `details` field, terminal summaries and the Layer 5 narrative report — are Turkish, since the natural-language forensic report is a deliverable of the system rather than an implementation detail. The report language is configurable through `LLM_CONFIG["output_language"]`.
+Source comments, docstrings and developer-facing error messages are written in English. Strings that reach the end user (the `details` field, terminal summaries and the Layer 5 narrative report) are Turkish, since the natural-language forensic report is a deliverable of the system rather than an implementation detail. The report language is configurable through `LLM_CONFIG["output_language"]`.

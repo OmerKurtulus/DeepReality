@@ -3,7 +3,7 @@
 These are single-cell Colab scripts, not Jupyter notebooks: paste one into
 a cell and run it. They are kept in the repository because the Layer 6
 result reported in the [project README](../README.md#8-layer-6--ensemble-fusion)
-is only meaningful if the path to it can be inspected — including the two
+is only meaningful if the path to it can be inspected, including the two
 attempts that were rejected.
 
 Run them in order. Each writes its output to Google Drive, so a recycled
@@ -21,7 +21,7 @@ Colab runtime never costs more than the step in progress.
 The first two attempts failed, and each failure changed the design:
 
 1. **`train_pin_f1_colab.py`** fitted on `Hemg/deepfake-and-real-images` and
-   scored 0.50 — chance — on a cross-dataset holdout. Feature importance put
+   scored 0.50, chance, on a cross-dataset holdout. Feature importance put
    `a4_max_face_area_ratio` far ahead of every forensic signal: the model had
    learned corpus framing, not evidence.
 2. **`diagnose_and_retrain_f1.py`** established why. The base detectors are at
@@ -29,8 +29,8 @@ The first two attempts failed, and each failure changed the design:
    while all four carry real signal on `ComplexDataLab/OpenFake`. A stacked
    ensemble cannot manufacture signal its base learners lack.
 3. **`train_f1_openfake.py`** refitted on OpenFake and still lost to PIN-B2
-   alone, because provenance features — already adjudicated by the Layer 5
-   rule calculus — dominated the fit and did not transfer across the split.
+   alone, because provenance features, already adjudicated by the Layer 5
+   rule calculus, dominated the fit and did not transfer across the split.
 4. **`train_f1_cv.py`** enforces the documented Tier 3/4 scope and replaces the
    split with cross-validation. Fusion then beats the best single detector by
    +0.16 ROC-AUC and reduces calibration error nineteenfold.
@@ -42,7 +42,7 @@ gate, which is why the reported figure is worth something.
 ## Prerequisites
 
 - A Colab runtime with a GPU (A100 preferred, T4 workable)
-- The Layer 2 weights in `MyDrive/DeepReality/models/` — see [models/README.md](../models/README.md)
+- The Layer 2 weights in `MyDrive/DeepReality/models/`, see [models/README.md](../models/README.md)
 - `REPO_URL` at the top of the extraction script pointing at your fork
 
 `train_f1_cv.py` needs neither the repository nor the weights: it reads only

@@ -20,7 +20,7 @@
 
   <!-- ── Concurrent tier ────────────────────────────────────────── -->
   <rect x="60" y="120" width="1000" height="96" rx="7" fill="none" stroke="#B3AEA0" stroke-width="1" stroke-dasharray="5 4"/>
-  <text x="76" y="142" fill="#8A867C" font-size="10.5" font-weight="700" letter-spacing="1.2">CONCURRENT — NO MUTUAL DEPENDENCY</text>
+  <text x="76" y="142" fill="#8A867C" font-size="10.5" font-weight="700" letter-spacing="1.2">CONCURRENT · NO MUTUAL DEPENDENCY</text>
 
   <g font-size="12" font-weight="600" fill="#141413">
     <rect x="76"  y="152" width="106" height="46" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.1"/>
@@ -59,7 +59,7 @@
   <!-- Layer 3, deferred -->
   <rect x="1090" y="152" width="250" height="46" rx="5" fill="url(#dg-hatch)" stroke="#B3AEA0" stroke-width="1.1" stroke-dasharray="4 3"/>
   <text x="1215" y="172" text-anchor="middle" fill="#57544C" font-size="12" font-weight="600">PIN-C1 · C2 · C3</text>
-  <text x="1215" y="188" text-anchor="middle" fill="#8A867C" font-size="9.5">video temporal — in progress</text>
+  <text x="1215" y="188" text-anchor="middle" fill="#8A867C" font-size="9.5">video temporal · in progress</text>
 
   <!-- ── D1 ─────────────────────────────────────────────────────── -->
   <path d="M 617 202 L 617 232 L 700 232 L 700 262" fill="none" stroke="#141413" stroke-width="1.1" marker-end="url(#dg-a)"/>
@@ -93,7 +93,7 @@
   <text x="1010" y="506" text-anchor="middle" fill="#141413" font-size="12" font-weight="600">PIN-F1</text>
   <text x="1010" y="522" text-anchor="middle" fill="#6E6B63" font-size="9.5">Ensemble fusion</text>
 
-  <text x="820" y="552" fill="#8A867C" font-size="9.5">verdict read for comparison only —</text>
+  <text x="820" y="552" fill="#8A867C" font-size="9.5">verdict read for comparison only,</text>
   <text x="820" y="566" fill="#8A867C" font-size="9.5">never a model input</text>
 
   <!-- consensus -->

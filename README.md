@@ -12,9 +12,25 @@
 
 **A multi-layer forensic architecture for detecting AI-generated and manipulated imagery.**
 
-DeepReality combines several mutually independent analytical paradigms — documentary provenance, compression physics, spatial deep learning, frequency-domain analysis, language-model reasoning and statistical ensemble fusion — within a single modular pipeline. It is designed to address the central weakness of contemporary detection tools: the *generalisation gap*, whereby systems built on one model architecture recognise only the manipulation techniques present in their training distribution and degrade sharply on unseen generators.
+DeepReality combines several mutually independent analytical paradigms (documentary provenance, compression physics, spatial deep learning, frequency-domain analysis, language-model reasoning and statistical ensemble fusion) within a single modular pipeline. It is designed to address the central weakness of contemporary detection tools: the *generalisation gap*, whereby systems built on one model architecture recognise only the manipulation techniques present in their training distribution and degrade sharply on unseen generators.
 
 ![DeepReality PIN Architecture](docs/architecture.svg)
+
+---
+
+## Preview
+
+A single image taken through all fifteen pins. Every number below is the actual output of one pipeline run.
+
+![Worked example](docs/preview.svg)
+
+The sample is `input/sample_ai_generated.png`, which ships with the repository, so the run can be reproduced immediately after cloning:
+
+```bash
+python3 main.py
+```
+
+What the run demonstrates: PIN-A2 recovers a C2PA manifest declaring the image wholly synthetic and names the producing tool, the four detectors agree independently at a mean of 0.932, Grad-CAM shows where each of them looked, and Layer 5 decides on the producer's declaration rather than on detector consensus. Layer 6 reaches the same conclusion by a different method. The confidence is 0.88 rather than higher because the manifest's certificate had expired, and the system says so.
 
 ---
 
@@ -22,12 +38,12 @@ DeepReality combines several mutually independent analytical paradigms — docum
 
 - [1. Problem statement](#1-problem-statement)
 - [2. Architectural principles](#2-architectural-principles)
-- [3. Layer 1 — Preprocessing](#3-layer-1--preprocessing)
-- [4. Layer 2 — Detection Core](#4-layer-2--detection-core)
-- [5. Layer 3 — Video Temporal](#5-layer-3--video-temporal-in-progress)
-- [6. Layer 4 — Explainability](#6-layer-4--explainability)
-- [7. Layer 5 — Adjudication](#7-layer-5--adjudication)
-- [8. Layer 6 — Ensemble Fusion](#8-layer-6--ensemble-fusion)
+- [3. Layer 1: Preprocessing](#3-layer-1-preprocessing)
+- [4. Layer 2: Detection Core](#4-layer-2-detection-core)
+- [5. Layer 3: Video Temporal](#5-layer-3-video-temporal-in-progress)
+- [6. Layer 4: Explainability](#6-layer-4-explainability)
+- [7. Layer 5: Adjudication](#7-layer-5-adjudication)
+- [8. Layer 6: Ensemble Fusion](#8-layer-6-ensemble-fusion)
 - [9. Execution model](#9-execution-model)
 - [10. Installation and use](#10-installation-and-use)
 - [11. Known limitations](#11-known-limitations)
@@ -42,7 +58,7 @@ Detection systems that rely on a single learned classifier inherit that classifi
 
 A second, less discussed failure is epistemic rather than statistical. Most systems reduce every available signal to a single scalar and average it. But the evidence types involved are not commensurable. A cryptographically signed C2PA manifest declaring an asset to be `trainedAlgorithmicMedia` is an *assertion by its producer* about how the asset was made. A neural detector's output is an *inference* about how it appears. Averaging the two allows a sufficiently confident inference to overturn a documented fact, which is the wrong result in every case.
 
-DeepReality addresses both. Fifteen independent analysis modules — *pins* — each examine the image from a different epistemic position, and a reasoning stage adjudicates between them under an explicit evidence hierarchy in which documentary provenance constrains statistical inference rather than competing with it.
+DeepReality addresses both. Fifteen independent analysis modules, *pins*, each examine the image from a different epistemic position, and a reasoning stage adjudicates between them under an explicit evidence hierarchy in which documentary provenance constrains statistical inference rather than competing with it.
 
 ---
 
@@ -93,21 +109,21 @@ Two principles are stated explicitly because both are routinely violated in prac
 
 ---
 
-## 3. Layer 1 — Preprocessing
+## 3. Layer 1: Preprocessing
 
-Lightweight but high-value signals extracted before any model is invoked. These pins read documentary and physical evidence, which is independent of — and in the hierarchy superior to — statistical inference.
+Lightweight but high-value signals extracted before any model is invoked. These pins read documentary and physical evidence, which is independent of, and in the hierarchy superior to, statistical inference.
 
 ### 3.1 PIN-A1 · EXIF / Metadata Analysis
 
 **Purpose.** Extract every metadata layer of the file and evaluate two distinct classes of finding: traces left by generative tools, and telemetry left by a camera.
 
-**Method.** The pin reads standard EXIF (including the GPS and sub-IFD blocks) through Pillow, then scans the raw container for text fragments that Pillow does not surface: PNG `tEXt`/`iTXt` chunks, JPEG `COM`/`APP` segments and embedded XMP. This second pass matters because generators frequently record their parameters there even when the standard EXIF block is empty — a Stable Diffusion `parameters` field, a Midjourney directive string, a DALL-E header.
+**Method.** The pin reads standard EXIF (including the GPS and sub-IFD blocks) through Pillow, then scans the raw container for text fragments that Pillow does not surface: PNG `tEXt`/`iTXt` chunks, JPEG `COM`/`APP` segments and embedded XMP. This second pass matters because generators frequently record their parameters there even when the standard EXIF block is empty, a Stable Diffusion `parameters` field, a Midjourney directive string, a DALL-E header.
 
 A separate byte-level scan searches for C2PA/JUMBF markers (`jumb`, `c2pa.actions`, `trainedAlgorithmicMedia`, `c2pa-rs`). These live in the container rather than the EXIF block and therefore frequently survive in files whose metadata otherwise appears stripped. This is a heuristic scan; PIN-A2 performs the authoritative cryptographic parse.
 
 **Scoring.** Deliberately two-tier.
 
-*Tier 1 — evidence floor.* When decisive proof is present, a minimum score is guaranteed and the weighted sum is overridden, because a producer's own declaration cannot be outvoted by an accumulation of weak heuristics:
+*Tier 1, evidence floor.* When decisive proof is present, a minimum score is guaranteed and the weighted sum is overridden, because a producer's own declaration cannot be outvoted by an accumulation of weak heuristics:
 
 | Condition | Floor |
 |---|---|
@@ -116,9 +132,9 @@ A separate byte-level scan searches for C2PA/JUMBF markers (`jumb`, `c2pa.action
 | Generator signature at ≥ 90 % confidence | 0.75 |
 | Generator signature at ≥ 80 % confidence | 0.65 |
 
-*Tier 2 — weighted sum.* Absent decisive evidence, nine signals are combined: generator signature (0.30), C2PA marker (0.25), no camera data (0.12), suspicious software field (0.08), no datetime (0.07), metadata stripped (0.05), generator-typical dimensions (0.05), compression anomaly (0.05), no GPS (0.03). The final score is the greater of the two tiers.
+*Tier 2, weighted sum.* Absent decisive evidence, nine signals are combined: generator signature (0.30), C2PA marker (0.25), no camera data (0.12), suspicious software field (0.08), no datetime (0.07), metadata stripped (0.05), generator-typical dimensions (0.05), compression anomaly (0.05), no GPS (0.03). The final score is the greater of the two tiers.
 
-**Interpretation.** Camera telemetry is reported verbatim rather than as a boolean, because its *content* is the evidence: `make: Apple, model: iPhone 12 Pro, lens: 2.71 mm f/2.2, iso: 250` together with GPS coordinates and `DateTimeOriginal` describes a specific physical exposure event that no current generator synthesises coherently. The asymmetry principle applies in full — this is strong evidence for authenticity, while its absence is not evidence of synthesis.
+**Interpretation.** Camera telemetry is reported verbatim rather than as a boolean, because its *content* is the evidence: `make: Apple, model: iPhone 12 Pro, lens: 2.71 mm f/2.2, iso: 250` together with GPS coordinates and `DateTimeOriginal` describes a specific physical exposure event that no current generator synthesises coherently. The asymmetry principle applies in full: this is strong evidence for authenticity, while its absence is not evidence of synthesis.
 
 **Output.** `ai_tool_signature`, `camera` (make/model/lens/ISO/aperture), `gps_present`, `capture_datetime_present`, `c2pa_binary_markers`, `metadata_stripped`, `score_breakdown`.
 
@@ -128,10 +144,10 @@ A separate byte-level scan searches for C2PA/JUMBF markers (`jumb`, `c2pa.action
 
 **Method.** Parsing and validation use the reference `c2pa-python` implementation. Four assertion classes are extracted:
 
-- **`digital_source_type`** (IPTC) — the decisive field. `trainedAlgorithmicMedia` means AI-generated; `algorithmicMedia` means algorithmically produced; `compositeWithTrainedAlgorithmicMedia` means AI-assisted editing.
-- **`issuer` / `software_agent`** — the signing organisation and the producing tool.
-- **`actions`** — the file's recorded history: `c2pa.created`, `c2pa.generated`, `c2pa.captured`, `c2pa.edited`, `c2pa.drawing`.
-- **`validation_status`** — cryptographic integrity of the manifest.
+- **`digital_source_type`** (IPTC), the decisive field. `trainedAlgorithmicMedia` means AI-generated; `algorithmicMedia` means algorithmically produced; `compositeWithTrainedAlgorithmicMedia` means AI-assisted editing.
+- **`issuer` / `software_agent`**, the signing organisation and the producing tool.
+- **`actions`**, the file's recorded history: `c2pa.created`, `c2pa.generated`, `c2pa.captured`, `c2pa.edited`, `c2pa.drawing`.
+- **`validation_status`**, cryptographic integrity of the manifest.
 
 **Manifest chain traversal.** A non-obvious but essential implementation detail. Some providers place the informative claim in a *parent* manifest rather than the active one. OpenAI, for example, emits:
 
@@ -181,19 +197,19 @@ The Median Absolute Deviation is used rather than the standard deviation because
 
 **Method.** MediaPipe BlazeFace, supporting both the modern Tasks API and the legacy Solutions API with automatic selection. For each detection the pin extracts a bounding box with confidence, six landmarks (eyes, nose tip, mouth centre, ears), alignment data derived from the eye axis (roll angle, inter-eye distance, frontal/profile classification) and quality metrics (Laplacian sharpness, brightness, contrast, area ratio, resolution class). Faces are rotated onto the eye axis, cropped with a 30 % margin and normalised to 224×224.
 
-**Role.** This pin emits no authenticity score. Its contribution is *hypothesis admissibility*: face swap and reenactment deepfakes require a face, whereas a fully synthetic scene need not contain one. It additionally supplies normalised crops for downstream analysis and a quality assessment that bounds how much weight the detector outputs deserve — a heavily blurred or extremely small face limits what any classifier can legitimately conclude.
+**Role.** This pin emits no authenticity score. Its contribution is *hypothesis admissibility*: face swap and reenactment deepfakes require a face, whereas a fully synthetic scene need not contain one. It additionally supplies normalised crops for downstream analysis and a quality assessment that bounds how much weight the detector outputs deserve, a heavily blurred or extremely small face limits what any classifier can legitimately conclude.
 
 ---
 
-## 4. Layer 2 — Detection Core
+## 4. Layer 2: Detection Core
 
 Four detectors spanning deliberately different paradigms, selected so that the blind spot of any one architecture is covered by another. Their disagreement is surfaced to the adjudication stage rather than averaged away.
 
 ### 4.1 PIN-B1 · CLIP ViT-L/14 (frozen backbone, LayerNorm tuning)
 
-**Architecture.** OpenAI CLIP ViT-L/14 with the vision backbone frozen; only the LayerNorm affine parameters are trained, together with a small classification head — approximately **365 K trainable parameters of 427 M total (0.09 %)**.
+**Architecture.** OpenAI CLIP ViT-L/14 with the vision backbone frozen; only the LayerNorm affine parameters are trained, together with a small classification head, approximately **365 K trainable parameters of 427 M total (0.09 %)**.
 
-**Rationale.** The pretrained CLIP representation encodes broad visual semantics learned from a very large and diverse corpus. Full fine-tuning on a comparatively small deepfake dataset overwrites that representation with corpus-specific artefact detection, which raises in-distribution accuracy while destroying transfer. Restricting adaptation to LayerNorm statistics recalibrates the feature distribution without altering the learned features themselves. The consequence is that this detector degrades most gracefully on generators absent from training, which makes it the system's generalisation specialist — and makes its dissent from the fine-tuned detectors diagnostically informative rather than a minority vote to be outweighed.
+**Rationale.** The pretrained CLIP representation encodes broad visual semantics learned from a very large and diverse corpus. Full fine-tuning on a comparatively small deepfake dataset overwrites that representation with corpus-specific artefact detection, which raises in-distribution accuracy while destroying transfer. Restricting adaptation to LayerNorm statistics recalibrates the feature distribution without altering the learned features themselves. The consequence is that this detector degrades most gracefully on generators absent from training, which makes it the system's generalisation specialist, and makes its dissent from the fine-tuned detectors diagnostically informative rather than a minority vote to be outweighed.
 
 **Input/output.** 224×224; emits `clip_prob`, `clip_confidence` and a 1024-dimensional feature vector.
 
@@ -201,9 +217,9 @@ Four detectors spanning deliberately different paradigms, selected so that the b
 
 ### 4.2 PIN-B2 · SigLIP2-base-512 (full fine-tune)
 
-**Architecture.** Google SigLIP2-base-patch16-512 with the full vision encoder fine-tuned — **93.7 M trainable of 376 M total**.
+**Architecture.** Google SigLIP2-base-patch16-512 with the full vision encoder fine-tuned, **93.7 M trainable of 376 M total**.
 
-**Rationale.** SigLIP replaces CLIP's softmax contrastive objective with a pairwise sigmoid loss, which decouples the loss from the batch-global normalisation term and yields stronger representations at equivalent scale. More importantly here, this pin operates at **512×512, the highest input resolution in the system**: generative artefacts at the scale of individual hair strands, iris texture, tooth boundaries and skin pores are simply below the sampling limit of a 224×224 model. Full fine-tuning maximises in-distribution accuracy at a cost — it is the detector most sensitive to distribution shift, which is precisely why it is paired with B1 rather than deployed alone.
+**Rationale.** SigLIP replaces CLIP's softmax contrastive objective with a pairwise sigmoid loss, which decouples the loss from the batch-global normalisation term and yields stronger representations at equivalent scale. More importantly here, this pin operates at **512×512, the highest input resolution in the system**: generative artefacts at the scale of individual hair strands, iris texture, tooth boundaries and skin pores are simply below the sampling limit of a 224×224 model. Full fine-tuning maximises in-distribution accuracy at a cost: it is the detector most sensitive to distribution shift, which is precisely why it is paired with B1 rather than deployed alone.
 
 **Input/output.** 512×512; emits `siglip_prob`, `siglip_confidence` and a 768-dimensional feature vector.
 
@@ -213,20 +229,20 @@ Four detectors spanning deliberately different paradigms, selected so that the b
 
 **Architecture.** A purpose-built five-block convolutional network (≈ 4.8 M parameters) trained from scratch on a four-channel frequency representation.
 
-**Theory.** Generative pipelines leave systematic traces in the frequency domain that are invisible in pixel space. GAN decoders built from transposed convolutions or nearest-neighbour upsampling produce periodic spectral peaks — the characteristic checkerboard signature. Diffusion samplers, operating in a latent space and decoded through a VAE, impose their own spectral fingerprint on the high-frequency band. Neither artefact class is reliably recoverable by a spatial classifier, which is trained to be approximately invariant to exactly this kind of global statistical structure.
+**Theory.** Generative pipelines leave systematic traces in the frequency domain that are invisible in pixel space. GAN decoders built from transposed convolutions or nearest-neighbour upsampling produce periodic spectral peaks, the characteristic checkerboard signature. Diffusion samplers, operating in a latent space and decoded through a VAE, impose their own spectral fingerprint on the high-frequency band. Neither artefact class is reliably recoverable by a spatial classifier, which is trained to be approximately invariant to exactly this kind of global statistical structure.
 
 **Representation.** The image is converted to grayscale, resized to 224×224 and transformed into four channels:
 
 | Channel | Content |
 |---|---|
 | 0 | DCT log-magnitude spectrum (global frequency structure) |
-| 1 | DWT LH subband — horizontal detail / vertical edges |
-| 2 | DWT HL subband — vertical detail / horizontal edges |
-| 3 | DWT HH subband — diagonal detail, corner and texture artefacts |
+| 1 | DWT LH subband, horizontal detail / vertical edges |
+| 2 | DWT HL subband, vertical detail / horizontal edges |
+| 3 | DWT HH subband, diagonal detail, corner and texture artefacts |
 
-The Haar wavelet is used for its compact support, which preserves partial spatial localisation in the detail subbands — the property PIN-D1 relies on when producing an approximate spatial attribution for this model.
+The Haar wavelet is used for its compact support, which preserves partial spatial localisation in the detail subbands, the property PIN-D1 relies on when producing an approximate spatial attribution for this model.
 
-**Why it matters for fusion.** B3's domain is *disjoint* from that of B1 and B2. Agreement between a spatial detector and a frequency detector therefore constitutes genuine corroboration rather than a repeated measurement of the same quantity — a stronger form of evidence than agreement among spatial models alone.
+**Why it matters for fusion.** B3's domain is *disjoint* from that of B1 and B2. Agreement between a spatial detector and a frequency detector therefore constitutes genuine corroboration rather than a repeated measurement of the same quantity, a stronger form of evidence than agreement among spatial models alone.
 
 **Sensitivity.** Resampling, aggressive denoising and heavy recompression all perturb the spectrum without implying synthesis. The adjudication protocol accounts for this.
 
@@ -236,19 +252,19 @@ The Haar wavelet is used for its compact support, which preserves partial spatia
 
 **Architecture.** SigLIP2-base-patch16-224 with a three-way classification head (`prithivMLmods/AI-vs-Deepfake-vs-Real-Siglip2`, Apache 2.0), run entirely locally.
 
-**Rationale.** The only multi-class detector in the system, and the only instrument able to express the distinction the binary detectors structurally cannot: **whether an image was synthesised outright or is authentic content that was subsequently altered.** That distinction is not cosmetic — it determines which downstream evidence is meaningful. For a wholly synthetic image, ELA has nothing to localise; for a manipulated authentic image, ELA and Grad-CAM fusion become the primary localisation instruments. It was trained independently of B1–B3 and therefore constitutes a genuinely separate vote rather than a fourth reading of the same corpus.
+**Rationale.** The only multi-class detector in the system, and the only instrument able to express the distinction the binary detectors structurally cannot: **whether an image was synthesised outright or is authentic content that was subsequently altered.** That distinction is not cosmetic: it determines which downstream evidence is meaningful. For a wholly synthetic image, ELA has nothing to localise; for a manipulated authentic image, ELA and Grad-CAM fusion become the primary localisation instruments. It was trained independently of B1–B3 and therefore constitutes a genuinely separate vote rather than a fourth reading of the same corpus.
 
 **Output.** `p_ai_generated`, `p_deepfake`, `p_real`, `predicted_class`, and an ensemble-compatible `fake_score = p_ai + p_deepfake`.
 
 **Measured performance.** 99.05 % on its 4,000-image evaluation set.
 
-### 4.5 Correlated consensus — a caveat
+### 4.5 Correlated consensus: a caveat
 
 PIN-B1, B2 and B3 were trained on the same corpus (OpenDeepfake-Preview, ≈ 20 K images). Their agreement is therefore **partially correlated through a shared data distribution and does not constitute three independent confirmations.** The adjudication protocol encodes this explicitly by capping confidence derived from detector consensus alone at approximately 0.90 in the absence of provenance evidence. Stating this is a matter of methodological honesty: an ensemble that presents correlated votes as independent systematically overstates its own certainty.
 
 ---
 
-## 5. Layer 3 — Video Temporal *(in progress)*
+## 5. Layer 3: Video Temporal *(in progress)*
 
 Video introduces an evidence dimension unavailable in still images: consistency across time. The three pins below are specified in the architecture and are not part of the present implementation.
 
@@ -264,23 +280,23 @@ A SyncNet-style two-stream encoder embeds mouth-region crops and the correspondi
 
 Remote photoplethysmography recovers the periodic colour fluctuation caused by cardiac blood flow in facial skin. The signal is spatially coherent across facial regions and temporally periodic within the plausible heart-rate band. Synthetic faces have no cardiovascular system, and current generators do not model this signal, so its absence or incoherence is evidence of synthesis independent of any visual artefact. Intended output: `bio_score`, `ppg_signal`.
 
-**Note on evidential standing.** These pins would occupy Tier 3 alongside the Layer 2 detectors, with C3 arguably closer to Tier 2 — it measures a physical process rather than a learned appearance statistic.
+**Note on evidential standing.** These pins would occupy Tier 3 alongside the Layer 2 detectors, with C3 arguably closer to Tier 2: it measures a physical process rather than a learned appearance statistic.
 
 ---
 
-## 6. Layer 4 — Explainability
+## 6. Layer 4: Explainability
 
-Commercial detection tools are predominantly opaque: a score is returned with no account of its basis. Layer 4 converts model output into inspectable evidence, which serves two purposes — operator trust, and false-positive diagnosis.
+Commercial detection tools are predominantly opaque: a score is returned with no account of its basis. Layer 4 converts model output into inspectable evidence, which serves two purposes: operator trust, and false-positive diagnosis.
 
 ### 6.1 PIN-D1 · Grad-CAM Heatmap
 
 **Method.** Grad-CAM (Selvaraju et al., 2017) recovers the spatial support of a decision by differentiating the target-class logit with respect to a chosen layer's activations, using the channel-mean gradients as importance weights and rectifying the weighted sum to retain only evidence *supporting* the class.
 
-**Adaptation to Vision Transformers.** The target layer is the `layer_norm1` module of the final encoder block. Token activations are reshaped onto the patch grid — 16×16 for B1 at 224 px, 32×32 for B2 at 512 px — with automatic CLS-token handling: if the token count is a perfect square the sequence has no CLS (SigLIP); if `count − 1` is a perfect square the leading token is discarded (CLIP).
+**Adaptation to Vision Transformers.** The target layer is the `layer_norm1` module of the final encoder block. Token activations are reshaped onto the patch grid (16×16 for B1 at 224 px, 32×32 for B2 at 512 px) with automatic CLS-token handling: if the token count is a perfect square the sequence has no CLS (SigLIP); if `count − 1` is a perfect square the leading token is discarded (CLIP).
 
 **Implementation.** No external XAI package is used, which keeps the pin compatible with current `transformers` releases. Gradients are obtained through `torch.autograd.grad(logit, activation)` rather than a full `backward()` pass, so back-propagation terminates at the target layer. Since that layer is the final encoder block, this is roughly **twenty times cheaper** than differentiating the entire 24-block ViT, and it never touches parameter `.grad` fields.
 
-**Frequency-model caveat.** The PIN-B3 map is derived from a DCT/DWT representation whose correspondence to image coordinates is only approximate — the wavelet subbands retain partial spatial structure, the DCT channel none. It is therefore weighted at 20 % in the combined map against 40 % each for the spatial models.
+**Frequency-model caveat.** The PIN-B3 map is derived from a DCT/DWT representation whose correspondence to image coordinates is only approximate, the wavelet subbands retain partial spatial structure, the DCT channel none. It is therefore weighted at 20 % in the combined map against 40 % each for the spatial models.
 
 **Cross-model agreement.** The IoU between the thresholded CLIP and SigLIP maps is reported. High agreement indicates a shared, reproducible cue; near-zero agreement indicates the detectors fired for unrelated reasons, and their numerical consensus is correspondingly weaker than it appears.
 
@@ -292,37 +308,37 @@ Commercial detection tools are predominantly opaque: a score is returned with no
 
 **Rationale.** Two methods with disjoint failure modes converging on the same coordinates is substantially stronger evidence than either alone, and it is the only signal in the system that answers *where* rather than *whether*.
 
-**An important gate.** Because the CAM is normalised, *every* image has a hottest region. When no detector reports synthesis, those regions indicate only where the model looked — not that anything is anomalous. CAM-only regions are therefore marked only when at least one Layer 2 model exceeds the medium-risk threshold. Without this gate the pin annotates clean images with meaningless boxes, which is worse than silence because it manufactures the appearance of evidence.
+**An important gate.** Because the CAM is normalised, *every* image has a hottest region. When no detector reports synthesis, those regions indicate only where the model looked, not that anything is anomalous. CAM-only regions are therefore marked only when at least one Layer 2 model exceeds the medium-risk threshold. Without this gate the pin annotates clean images with meaningless boxes, which is worse than silence because it manufactures the appearance of evidence.
 
 **Scoring.** The score expresses **localisation-evidence strength, not fake probability**: fused region 0.80, high-severity ELA only 0.55, low/moderate ELA only 0.35, concentrated CAM only 0.30, none 0.05. It is consumed as a distinct feature by the adjudication and ensemble stages and never averaged with detector probabilities.
 
-**Output.** Annotated overlay with colour-coded regions — red for ELA hotspot, blue for coldspot, yellow for Grad-CAM focus, heavy orange for corroborated fusion.
+**Output.** Annotated overlay with colour-coded regions, red for ELA hotspot, blue for coldspot, yellow for Grad-CAM focus, heavy orange for corroborated fusion.
 
 ---
 
-## 7. Layer 5 — Adjudication
+## 7. Layer 5: Adjudication
 
 ### 7.1 PIN-E1 · LLM Reasoning Engine
 
 The terminal node of the dependency graph, and the only component that observes all upstream evidence simultaneously. It is therefore the only component able to weigh documentary provenance against statistical inference, recognise when an instrument is operating outside its validated domain, and state a conclusion with its residual uncertainty.
 
-**Evidence compression.** Unabridged pin output for a single image exceeds 2,300 embedding values (CLIP 1024-d, SigLIP2 768-d, frequency CNN 512-d) alongside static model cards, per-region pixel ranges and facial landmark coordinates — approaching 17,000 tokens, of which essentially none carries adjudication value. An embedding is meaningful to a downstream classifier, not to a reasoning model. Three reductions are applied:
+**Evidence compression.** Unabridged pin output for a single image exceeds 2,300 embedding values (CLIP 1024-d, SigLIP2 768-d, frequency CNN 512-d) alongside static model cards, per-region pixel ranges and facial landmark coordinates, approaching 17,000 tokens, of which essentially none carries adjudication value. An embedding is meaningful to a downstream classifier, not to a reasoning model. Three reductions are applied:
 
-1. **Elimination** — embeddings, model cards, raw manifests and landmark coordinates are dropped entirely. Static model characteristics are described once in the system prompt instead of being repeated per request.
-2. **Aggregation** — region lists are summarised by count, severity distribution and strongest representatives rather than enumerated exhaustively.
-3. **Normalisation** — every pin is reduced to the same shape, so a uniform interpretation protocol applies.
+1. **Elimination**, embeddings, model cards, raw manifests and landmark coordinates are dropped entirely. Static model characteristics are described once in the system prompt instead of being repeated per request.
+2. **Aggregation**, region lists are summarised by count, severity distribution and strongest representatives rather than enumerated exhaustively.
+3. **Normalisation**, every pin is reduced to the same shape, so a uniform interpretation protocol applies.
 
 Measured across the test corpus this yields a **96–97 % token reduction, approximately 17,000 tokens to 620**, with no loss of decision-relevant information. Derived consensus statistics (mean, min, max, spread, count flagging fake) are computed in code rather than delegated to the model, which removes an arithmetic failure mode and makes disagreement immediately visible.
 
 **Reasoning protocol.** The system prompt (≈ 3,900 tokens) is not a general instruction to analyse data. It specifies:
 
-- an **instrument reference** — the physical or statistical basis of every pin and its reliability characteristics;
+- an **instrument reference**, the physical or statistical basis of every pin and its reliability characteristics;
 - the **four-tier evidence hierarchy** of §2.4, with the asymmetry principle stated as a mandatory constraint;
-- **documented failure modes** — the computational-photography false positive, format-induced ELA artefacts, correlated consensus, and missing-pin degradation;
+- **documented failure modes**, the computational-photography false positive, format-induced ELA artefacts, correlated consensus, and missing-pin degradation;
 - a **deterministic conflict-resolution procedure** (R1–R6) applied in order, with the applied rule reported in the output;
-- a **five-value verdict taxonomy** — `AUTHENTIC`, `AI_GENERATED`, `DEEPFAKE`, `SUSPICIOUS`, `INCONCLUSIVE` — with consistency constraints binding verdict, probability and confidence, and confidence treated as a quantity distinct from fake probability.
+- a **five-value verdict taxonomy** (`AUTHENTIC`, `AI_GENERATED`, `DEEPFAKE`, `SUSPICIOUS`, `INCONCLUSIVE`) with consistency constraints binding verdict, probability and confidence, and confidence treated as a quantity distinct from fake probability.
 
-**Response handling.** Model output is validated and repaired where recoverable — verdict synonyms are mapped, out-of-range probabilities clamped, and each repair recorded — rather than discarding an otherwise sound adjudication over a formatting deviation. JSON is recovered from fenced, array-wrapped or prose-wrapped responses.
+**Response handling.** Model output is validated and repaired where recoverable (verdict synonyms are mapped, out-of-range probabilities clamped, and each repair recorded) rather than discarding an otherwise sound adjudication over a formatting deviation. JSON is recovered from fenced, array-wrapped or prose-wrapped responses.
 
 **Degradation.** Where no credential is configured or the provider is unreachable, a deterministic rule-based adjudication implementing the same hierarchy is returned, explicitly labelled through `reasoning_mode`. The system remains functional offline, at the cost of the narrative justification and nuanced conflict handling that motivate the stage.
 
@@ -342,23 +358,23 @@ The predicates the rules test:
 
 | Symbol | Meaning |
 |---|---|
-| `P_ai` | Tier 1 AI provenance — valid C2PA manifest with an AI `digital_source_type`, a known AI issuer or software agent, an explicit generator signature, or an unvalidated IPTC source-type marker |
-| `P_cap` | Tier 1 authentic-capture provenance — signed camera-capture manifest with no AI action and no edit history |
-| `T_cam` | Tier 2 capture telemetry — coherent camera EXIF, ideally with GPS and `DateTimeOriginal` |
+| `P_ai` | Tier 1 AI provenance, valid C2PA manifest with an AI `digital_source_type`, a known AI issuer or software agent, an explicit generator signature, or an unvalidated IPTC source-type marker |
+| `P_cap` | Tier 1 authentic-capture provenance, signed camera-capture manifest with no AI action and no edit history |
+| `T_cam` | Tier 2 capture telemetry, coherent camera EXIF, ideally with GPS and `DateTimeOriginal` |
 | `μ` | Mean fake probability across the available Layer 2 detectors |
 | `σ_spread` | `max − min` of those probabilities |
 | `F` | Count of corroborated (fused) regions reported by PIN-D2 |
 | `A_subj` | Grad-CAM attention concentrated on the semantic subject rather than on background |
 
-**Worked example — R1.** A Gemini-produced image carried the marker `trainedAlgorithmicMedia` with issuer hint `google_ai`, but the reference parser could not validate the manifest. Detector output was mixed: PIN-B4 reported `Deepfake` at 0.998, while PIN-B1 and PIN-B2 reported 0.416 and 0.056 — near-`REAL`. R1 fired on the unvalidated source-type marker, returning `AI_GENERATED` at confidence 0.88: the producer's declaration set both the verdict and the taxonomy, overriding B4's contrary class opinion, and the reduced confidence recorded the unvalidated signature. Averaging the four detectors would have produced a materially worse answer.
+**Worked example, R1.** A Gemini-produced image carried the marker `trainedAlgorithmicMedia` with issuer hint `google_ai`, but the reference parser could not validate the manifest. Detector output was mixed: PIN-B4 reported `Deepfake` at 0.998, while PIN-B1 and PIN-B2 reported 0.416 and 0.056, near-`REAL`. R1 fired on the unvalidated source-type marker, returning `AI_GENERATED` at confidence 0.88: the producer's declaration set both the verdict and the taxonomy, overriding B4's contrary class opinion, and the reduced confidence recorded the unvalidated signature. Averaging the four detectors would have produced a materially worse answer.
 
-**Worked example — R3.** An authentic iPhone 12 Pro photograph carrying full telemetry (lens 2.71 mm f/2.2, ISO 250, GPS, `DateTimeOriginal`) was flagged by three of four detectors at 0.96–0.98. PIN-D2 reported `F = 0`, and PIN-D1 showed attention on flat wall regions rather than the face. R3 diagnosed the computational-photography failure mode and returned `AUTHENTIC` at 0.85, naming the conflict in the report. A single-model system would have declared this image a deepfake.
+**Worked example, R3.** An authentic iPhone 12 Pro photograph carrying full telemetry (lens 2.71 mm f/2.2, ISO 250, GPS, `DateTimeOriginal`) was flagged by three of four detectors at 0.96–0.98. PIN-D2 reported `F = 0`, and PIN-D1 showed attention on flat wall regions rather than the face. R3 diagnosed the computational-photography failure mode and returned `AUTHENTIC` at 0.85, naming the conflict in the report. A single-model system would have declared this image a deepfake.
 
-**Why ordering rather than weighting.** A weighted scheme has no way to express "this evidence class cannot be outvoted." Any finite weight on documentary provenance can be overcome by enough correlated detector agreement — and because PIN-B1 through B3 share a training corpus (§4.5), such agreement is precisely what the system produces most readily under distribution shift. Ordered rules make the constraint structural rather than parametric.
+**Why ordering rather than weighting.** A weighted scheme has no way to express "this evidence class cannot be outvoted." Any finite weight on documentary provenance can be overcome by enough correlated detector agreement, and because PIN-B1 through B3 share a training corpus (§4.5), such agreement is precisely what the system produces most readily under distribution shift. Ordered rules make the constraint structural rather than parametric.
 
 ---
 
-## 8. Layer 6 — Ensemble Fusion
+## 8. Layer 6: Ensemble Fusion
 
 ### 8.1 PIN-F1 · XGBoost Meta-Learner
 
@@ -366,39 +382,39 @@ The predicates the rules test:
 
 **Method.** Stacked generalisation over the pin score vector. The base learners are the pins themselves; the meta-learner is a gradient-boosted tree ensemble fitted to their outputs against ground-truth labels, then probability-calibrated.
 
-**Feature contract.** A single module (`layer6_ensemble/feature_extractor.py`) assembles the **54-dimensional** design matrix, and both training and inference import that same function. This eliminates the most common defect in stacked ensembles — a meta-learner scored against a vector assembled differently from the one it was trained on. The contract is versioned; the trained artefact records the schema version it was built against, and a mismatch raises a warning at inference rather than being silently mis-scored.
+**Feature contract.** A single module (`layer6_ensemble/feature_extractor.py`) assembles the **54-dimensional** design matrix, and both training and inference import that same function. This eliminates the most common defect in stacked ensembles, a meta-learner scored against a vector assembled differently from the one it was trained on. The contract is versioned; the trained artefact records the schema version it was built against, and a mismatch raises a warning at inference rather than being silently mis-scored.
 
 | Group | Features | Count |
 |---|---|---|
-| Tier 1/2 — provenance and telemetry | A1 signature/C2PA/camera/GPS/datetime flags, A2 manifest state | 15 |
-| Tier 4 — compression forensics | A3 score, anomaly counts, max deviation, ELA moments | 7 |
+| Tier 1/2, provenance and telemetry | A1 signature/C2PA/camera/GPS/datetime flags, A2 manifest state | 15 |
+| Tier 4, compression forensics | A3 score, anomaly counts, max deviation, ELA moments | 7 |
 | Context | A4 face count, confidence, area ratio, sharpness | 4 |
-| Tier 3 — detectors | B1–B3 probability and confidence, B4 three-class distribution | 10 |
-| Tier 3 — consensus | mean, min, max, spread, count flagging, count available | 6 |
-| Tier 4 — attention | D1 IoU and focus statistics, D2 evidence score and region counts | 8 |
+| Tier 3, detectors | B1–B3 probability and confidence, B4 three-class distribution | 10 |
+| Tier 3, consensus | mean, min, max, spread, count flagging, count available | 6 |
+| Tier 4, attention | D1 IoU and focus statistics, D2 evidence score and region counts | 8 |
 | Engineered interactions | telemetry–detector conflict, off-subject attention, spatial–frequency concordance, provenance strength | 4 |
 
 **Missing evidence is NaN, not zero.** Zero is a measurement ("this detector reported 0.0"); NaN is an absence ("this detector did not run"). XGBoost learns a default traversal direction for NaN at every split, so the distinction survives into the model instead of being flattened at the input. This is what allows the ensemble to degrade coherently when a pin fails.
 
-**Rationale for trees over a linear blend.** The optimal combination is not linear, because the value of a detector's output is *conditional* on the evidence surrounding it. A high B2 score means something different when capture telemetry is present than when it is absent; B1's dissent carries more weight when the subject resembles a photograph; B3 agreeing with the spatial models is stronger corroboration than the spatial models agreeing with each other, because the domains are disjoint. Gradient-boosted trees represent such interactions natively. A weighted average cannot express them at all — it assigns each detector one influence for every possible input.
+**Rationale for trees over a linear blend.** The optimal combination is not linear, because the value of a detector's output is *conditional* on the evidence surrounding it. A high B2 score means something different when capture telemetry is present than when it is absent; B1's dissent carries more weight when the subject resembles a photograph; B3 agreeing with the spatial models is stronger corroboration than the spatial models agreeing with each other, because the domains are disjoint. Gradient-boosted trees represent such interactions natively. A weighted average cannot express them at all: it assigns each detector one influence for every possible input.
 
 Four interaction terms are nonetheless supplied explicitly rather than left to be discovered. A booster can in principle learn the computational-photography signature from `has_camera × consensus_mean`, but only with far more data than a realistic corpus provides. Supplying it directly is the difference between the model needing to learn the domain and the model being told it.
 
-**Scope, stated honestly.** The vector spans all four tiers, but F1 is expected to learn from Tiers 3 and 4 only, for two reasons. First, provenance is adjudicated by the ordered rule calculus of §7.2, not statistically: a signed producer declaration is a constraint, not a quantity to be regressed against. Second, public deepfake corpora are re-encoded during packaging, which strips EXIF and C2PA — provenance features are therefore near-constant across any realistic training set and carry no gradient. The training notebook reports which columns had zero variance so this is visible rather than assumed.
+**Scope, stated honestly.** The vector spans all four tiers, but F1 is expected to learn from Tiers 3 and 4 only, for two reasons. First, provenance is adjudicated by the ordered rule calculus of §7.2, not statistically: a signed producer declaration is a constraint, not a quantity to be regressed against. Second, public deepfake corpora are re-encoded during packaging, which strips EXIF and C2PA, provenance features are therefore near-constant across any realistic training set and carry no gradient. The training notebook reports which columns had zero variance so this is visible rather than assumed.
 
-**Cross-validation against Layer 5, and how to read divergence.** E1 reasons symbolically under an ordered hierarchy; F1 fits statistically to outcomes. They are redundant by design. **E1's verdict enters PIN-F1 only for comparison and is never a model input** — feeding it in would collapse the cross-check into an imitation of the language model and destroy the independence the comparison depends on.
+**Cross-validation against Layer 5, and how to read divergence.** E1 reasons symbolically under an ordered hierarchy; F1 fits statistically to outcomes. They are redundant by design. **E1's verdict enters PIN-F1 only for comparison and is never a model input**, feeding it in would collapse the cross-check into an imitation of the language model and destroy the independence the comparison depends on.
 
 The same numeric gap means different things depending on which rule Layer 5 applied, and the pin classifies it accordingly:
 
 | Outcome | Condition | Reading |
 |---|---|---|
 | `concordant` | Both reach the same categorical conclusion | Supported by two independently derived methods |
-| `expected_divergence` | E1 applied R1/R2/R3 — a documentary rule | F1 lacks the deciding evidence; its dissent does **not** weaken the verdict |
-| `conflict` | E1 applied R4/R5 — statistical grounds | Genuine disagreement on shared evidence; `review_recommended` is set |
+| `expected_divergence` | E1 applied R1/R2/R3, a documentary rule | F1 lacks the deciding evidence; its dissent does **not** weaken the verdict |
+| `conflict` | E1 applied R4/R5, statistical grounds | Genuine disagreement on shared evidence; `review_recommended` is set |
 
-Collapsing these three into a single "agreement" flag would produce a system that cries wolf on precisely its most reliable verdicts — every C2PA-signed image would register as a conflict.
+Collapsing these three into a single "agreement" flag would produce a system that cries wolf on precisely its most reliable verdicts, every C2PA-signed image would register as a conflict.
 
-**Calibration.** Platt scaling maps raw booster output onto calibrated probabilities, so a reported 0.80 corresponds to an empirical 80 % frequency. Isotonic regression was rejected: at the sample sizes realistic for this stage it overfits the calibration set and produces a step function that is worse calibrated out of sample. The sigmoid is fitted on a split the booster never saw — calibrating on training scores is the classic error, producing excellent and meaningless numbers.
+**Calibration.** Platt scaling maps raw booster output onto calibrated probabilities, so a reported 0.80 corresponds to an empirical 80 % frequency. Isotonic regression was rejected: at the sample sizes realistic for this stage it overfits the calibration set and produces a step function that is worse calibrated out of sample. The sigmoid is fitted on a split the booster never saw, calibrating on training scores is the classic error, producing excellent and meaningless numbers.
 
 **Untrained behaviour.** Before an artefact exists the pin reports `model_status: "untrained"` and emits a transparent weighted baseline, labelled as such. An untrained stage that returns a confident number is worse than one that returns none.
 
@@ -413,9 +429,9 @@ Collapsing these three into a single "agreement" flag would produce a system tha
 | PIN-B3 | **0.4090** | 0.6262 |
 | PIN-B4 | 0.5283 | 0.6396 |
 
-On Hemg the detectors are at chance, and PIN-B3 is *inverted* — anti-correlated with the label, which is worse than noise because a fusion stage learns to trust it backwards. A stacked ensemble cannot manufacture signal its base learners lack, so Hemg was discarded as a training corpus and retained only as a cross-corpus stress test.
+On Hemg the detectors are at chance, and PIN-B3 is *inverted*, anti-correlated with the label, which is worse than noise because a fusion stage learns to trust it backwards. A stacked ensemble cannot manufacture signal its base learners lack, so Hemg was discarded as a training corpus and retained only as a cross-corpus stress test.
 
-*Scope enforcement.* The first fit on OpenFake reached 0.9918 in cross-validation but only 0.8119 on a held-out split, losing to PIN-B2 alone. Feature importance explained it: `a1_score`, `a1_ai_dimensions` and `a1_exif_field_count` occupied the top places. The model had learned "no EXIF plus generator-typical dimensions implies synthetic" — genuine evidence, but already adjudicated by the rule calculus of §7.2, and strongly corpus-identifying (provenance features separate the two corpora at 0.95+ AUC). The scope this document declares — Tiers 3 and 4 only — was documented but not enforced in code. Enforcing it removed 21 of 54 columns.
+*Scope enforcement.* The first fit on OpenFake reached 0.9918 in cross-validation but only 0.8119 on a held-out split, losing to PIN-B2 alone. Feature importance explained it: `a1_score`, `a1_ai_dimensions` and `a1_exif_field_count` occupied the top places. The model had learned "no EXIF plus generator-typical dimensions implies synthetic", genuine evidence, but already adjudicated by the rule calculus of §7.2, and strongly corpus-identifying (provenance features separate the two corpora at 0.95+ AUC). The scope this document declares, Tiers 3 and 4 only, was documented but not enforced in code. Enforcing it removed 21 of 54 columns.
 
 *Evaluation protocol.* A train/test split of OpenFake proved unusable: a stacker receiving `b2_prob` as an input scored below `b2_prob` alone, which can only happen when the learned mapping does not hold on the evaluation rows. The final protocol pools the corpus and uses stratified 5-fold cross-validation, so every prediction comes from a model that never saw that row and the detectors are scored on identical rows. That is the only apples-to-apples answer to whether fusion adds anything.
 
@@ -426,7 +442,7 @@ On Hemg the detectors are at chance, and PIN-B3 is *inverted* — anti-correlate
 | **PIN-F1 (XGBoost, depth 3)** | **0.8846** | 0.8104 | 0.8061 | **0.0203** |
 | PIN-F1 (XGBoost, depth 2) | 0.8780 | 0.8108 | 0.8028 | 0.0215 |
 | PIN-F1 (logistic, fusion set) | 0.8323 | 0.7762 | 0.7814 | 0.0817 |
-| PIN-B2 alone — best detector | 0.7244 | 0.5654 | 0.6931 | 0.3856 |
+| PIN-B2 alone, best detector | 0.7244 | 0.5654 | 0.6931 | 0.3856 |
 | PIN-B4 alone | 0.6131 | 0.5288 | 0.6790 | 0.4704 |
 | PIN-B3 alone | 0.5590 | 0.4996 | 0.6663 | 0.4683 |
 | PIN-B1 alone | 0.5099 | 0.5229 | 0.6009 | 0.2346 |
@@ -447,7 +463,7 @@ Fusion improves on the best single detector by **+0.16 ROC-AUC**. The calibratio
 
 ### 9.2 Threads rather than processes
 
-PyTorch inference, NumPy/OpenCV kernels and file I/O all release the GIL, so threads achieve genuine parallelism on this workload. More importantly, the loaded models — several gigabytes in aggregate — are shared from memory rather than duplicated per process.
+PyTorch inference, NumPy/OpenCV kernels and file I/O all release the GIL, so threads achieve genuine parallelism on this workload. More importantly, the loaded models, several gigabytes in aggregate, are shared from memory rather than duplicated per process.
 
 ### 9.3 Context propagation
 
@@ -460,7 +476,7 @@ Dependent pins receive both upstream envelopes and live object references:
 }
 ```
 
-The `_pins` channel is how PIN-D2 obtains PIN-D1's raw NumPy activation maps without serialising them through JSON, and how PIN-D1 reuses the already-loaded detector models rather than allocating its own — the reason the explainability layer adds no memory cost.
+The `_pins` channel is how PIN-D2 obtains PIN-D1's raw NumPy activation maps without serialising them through JSON, and how PIN-D1 reuses the already-loaded detector models rather than allocating its own, the reason the explainability layer adds no memory cost.
 
 ### 9.4 A thread-safety note
 
@@ -490,13 +506,13 @@ pip install -r requirements.txt
 
 `requirements.txt` pins every version to the set this project was verified against. The Layer 4 and Layer 6 stages deliberately add no dependency: Grad-CAM is implemented directly on PyTorch hooks, and the trained meta-learner is evaluated from its JSON without the xgboost runtime.
 
-**Optional — training extras.** Only needed to fit a *new* Layer 6 meta-learner; the supplied one works without them.
+**Optional, training extras.** Only needed to fit a *new* Layer 6 meta-learner; the supplied one works without them.
 
 ```bash
 pip install -r requirements-train.txt
 ```
 
-**Model weights.** Two artefacts ship with the repository, so Layers 1, 4 and 6 work immediately. The four Layer 2 detectors total about 3.4 GB and are hosted separately — see [models/README.md](models/README.md) for links and placement. PIN-B4's weights are a public third-party model and can be fetched with a single `curl`.
+**Model weights.** Two artefacts ship with the repository, so Layers 1, 4 and 6 work immediately. The four Layer 2 detectors total about 3.4 GB and are hosted separately, see [models/README.md](models/README.md) for links and placement. PIN-B4's weights are a public third-party model and can be fetched with a single `curl`.
 
 **Verify the installation:**
 
@@ -509,7 +525,7 @@ The first prints `12 pins ready`. The second asserts that the dependency-free mo
 
 **Platform notes.**
 
-- *macOS.* If you install the training extras, note that xgboost links against Homebrew's OpenMP runtime while PyTorch bundles its own; loading both into one process segfaults. Inference is unaffected — that is precisely why `layer6_ensemble/booster_eval.py` exists — but train in a separate interpreter or on Colab.
+- *macOS.* If you install the training extras, note that xgboost links against Homebrew's OpenMP runtime while PyTorch bundles its own; loading both into one process segfaults. Inference is unaffected (that is precisely why `layer6_ensemble/booster_eval.py` exists) but train in a separate interpreter or on Colab.
 - *HEIC/HEIF.* iPhone photographs are supported through `pillow-heif`, which is installed by default.
 - *First run.* PIN-B1 and PIN-B2 fetch their base architectures from the Hugging Face Hub once. Everything except Layer 5 then runs offline.
 
@@ -524,14 +540,14 @@ OPENROUTER_API_KEY=sk-or-v1-...
 DEEPREALITY_LLM_MODEL=google/gemma-4-26b-a4b-it:free
 ```
 
-The reasoning model is selected entirely from `.env` — any identifier from `openrouter.ai/models` works without a source change, and any OpenAI-compatible endpoint may be substituted through `DEEPREALITY_LLM_API_BASE`. Remaining defaults live in `config/settings.py` under `LLM_CONFIG`. Layers 1, 2, 4 and 6 operate offline and require no credential.
+The reasoning model is selected entirely from `.env`, any identifier from `openrouter.ai/models` works without a source change, and any OpenAI-compatible endpoint may be substituted through `DEEPREALITY_LLM_API_BASE`. Remaining defaults live in `config/settings.py` under `LLM_CONFIG`. Layers 1, 2, 4 and 6 operate offline and require no credential.
 
-Note that the reasoning protocol is demanding — strict JSON output and multi-step evidence weighting. Free-tier models produce usable but shallower adjudications; a frontier model is recommended for production analysis.
+Note that the reasoning protocol is demanding, strict JSON output and multi-step evidence weighting. Free-tier models produce usable but shallower adjudications; a frontier model is recommended for production analysis.
 
 ### 10.3 Running
 
 ```bash
-# Place images in input/ — jpg, png, webp, bmp, tiff, gif, heic/heif
+# Place images in input/: jpg, png, webp, bmp, tiff, gif, heic/heif
 python3 main.py
 ```
 
@@ -541,7 +557,7 @@ Progress is reported per pin as it completes, followed by layer summaries and th
 
 | Artefact | Contents |
 |---|---|
-| `{image}_PIN-XX.json` | Standard envelope per pin — score, verdict, detailed findings |
+| `{image}_PIN-XX.json` | Standard envelope per pin, score, verdict, detailed findings |
 | `{image}_PIN-E1.json` | Final verdict, confidence, decisive evidence, narrative report |
 | `{image}_PIN-E1_transcript.json` | Exact prompt payload and raw response, for audit |
 | `{image}_ELA_heatmap.png` | Error Level Analysis heatmap |
@@ -575,7 +591,7 @@ DeepReality/
 ├── notebooks/                   # Colab training and diagnostic scripts
 ├── tests/                       # Equivalence test for the model evaluator
 ├── docs/                        # Architecture diagrams (SVG)
-├── models/                      # Trained weights — see models/README.md
+├── models/                      # Trained weights, see models/README.md
 ├── input/                       # Images to analyse
 └── outputs/                     # Analysis results
 ```
@@ -594,7 +610,7 @@ Stated explicitly, since a detection system whose failure modes are undocumented
 
 **ELA scope.** Error Level Analysis presupposes a lossy compression history and localises editing rather than synthesis. On lossless or converted sources its findings are supporting evidence only.
 
-**Metadata is forgeable.** Capture telemetry is strong but rebuttable evidence. A determined adversary can fabricate EXIF fields — which is precisely why the architecture does not rest on any single evidence class.
+**Metadata is forgeable.** Capture telemetry is strong but rebuttable evidence. A determined adversary can fabricate EXIF fields, which is precisely why the architecture does not rest on any single evidence class.
 
 **Frequency-domain explainability.** The PIN-B3 Grad-CAM map corresponds only approximately to image coordinates and is down-weighted in the combined attention map for that reason.
 
@@ -610,7 +626,7 @@ Stated explicitly, since a detection system whose failure modes are undocumented
 
 ### Licence
 
-DeepReality is released under the **MIT License** ([LICENSE](LICENSE)) — a permissive, OSI-approved open-source licence. You may use, copy, modify, merge, publish, distribute, sublicense and sell copies of the software, including commercially, without asking permission.
+DeepReality is released under the **MIT License** ([LICENSE](LICENSE)), a permissive, OSI-approved open-source licence. You may use, copy, modify, merge, publish, distribute, sublicense and sell copies of the software, including commercially, without asking permission.
 
 One condition applies, and it is binding: **the copyright notice must be retained** in all copies or substantial portions of the software. If you reuse this code, ship it, or build a product on it, the attribution travels with it. [NOTICE](NOTICE) sets out what that means in practice, together with the licences of the third-party models this system builds on.
 
@@ -641,7 +657,7 @@ If you use this system, or results produced with it, please cite it. GitHub rend
 
 > Kurtuluş, Ö. F. (2026). *DeepReality: A multi-layer forensic architecture for detecting AI-generated and manipulated imagery* (Version 1.0.0) [Computer software]. GitHub. https://github.com/OmerKurtulus/DeepReality
 
-If you cite a specific measurement, please state which one — the Layer 2 figures are in-distribution and the Layer 6 figure is cross-validated, and they are not comparable.
+If you cite a specific measurement, please state which one, the Layer 2 figures are in-distribution and the Layer 6 figure is cross-validated, and they are not comparable.
 
 ---
 
@@ -660,39 +676,39 @@ Works the architecture draws on directly, grouped by the component they inform.
 
 1. Radford, A. et al. (2021). *Learning Transferable Visual Models From Natural Language Supervision.* ICML 2021. [arXiv:2103.00020](https://arxiv.org/abs/2103.00020)
 2. Zhai, X. et al. (2023). *Sigmoid Loss for Language Image Pre-Training.* ICCV 2023. [arXiv:2303.15343](https://arxiv.org/abs/2303.15343)
-3. Tschannen, M. et al. (2025). *SigLIP 2: Multilingual Vision-Language Encoders with Improved Semantic Understanding, Localization, and Dense Features.* [arXiv:2502.14786](https://arxiv.org/abs/2502.14786) — the encoder used by PIN-B2 and PIN-B4.
+3. Tschannen, M. et al. (2025). *SigLIP 2: Multilingual Vision-Language Encoders with Improved Semantic Understanding, Localization, and Dense Features.* [arXiv:2502.14786](https://arxiv.org/abs/2502.14786), the encoder used by PIN-B2 and PIN-B4.
 
 **Detection methodology**
 
-4. Ojha, U., Li, Y. & Lee, Y. J. (2023). *Towards Universal Fake Image Detectors that Generalize Across Generative Models.* CVPR 2023. [arXiv:2302.10174](https://arxiv.org/abs/2302.10174) — establishes that a frozen vision-language backbone generalises to unseen generators far better than a fine-tuned one. PIN-B1's design follows this result.
+4. Ojha, U., Li, Y. & Lee, Y. J. (2023). *Towards Universal Fake Image Detectors that Generalize Across Generative Models.* CVPR 2023. [arXiv:2302.10174](https://arxiv.org/abs/2302.10174), establishes that a frozen vision-language backbone generalises to unseen generators far better than a fine-tuned one. PIN-B1's design follows this result.
 5. Wang, S.-Y. et al. (2020). *CNN-Generated Images Are Surprisingly Easy to Spot… For Now.* CVPR 2020. [arXiv:1912.11035](https://arxiv.org/abs/1912.11035)
-6. Frank, J. et al. (2020). *Leveraging Frequency Analysis for Deep Fake Image Recognition.* ICML 2020. [arXiv:2003.08685](https://arxiv.org/abs/2003.08685) — the frequency-domain argument behind PIN-B3.
+6. Frank, J. et al. (2020). *Leveraging Frequency Analysis for Deep Fake Image Recognition.* ICML 2020. [arXiv:2003.08685](https://arxiv.org/abs/2003.08685), the frequency-domain argument behind PIN-B3.
 
 **Explainability (PIN-D1, PIN-D2)**
 
 7. Selvaraju, R. R. et al. (2017). *Grad-CAM: Visual Explanations from Deep Networks via Gradient-Based Localization.* ICCV 2017. [arXiv:1610.02391](https://arxiv.org/abs/1610.02391)
-8. Krawetz, N. (2007). *A Picture's Worth: Digital Image Analysis and Forensics.* Black Hat Briefings — the Error Level Analysis technique implemented in PIN-A3.
+8. Krawetz, N. (2007). *A Picture's Worth: Digital Image Analysis and Forensics.* Black Hat Briefings, the Error Level Analysis technique implemented in PIN-A3.
 
 **Ensemble and calibration (PIN-F1)**
 
-9. Wolpert, D. H. (1992). *Stacked Generalization.* Neural Networks, 5(2), 241–259 — the stacking scheme PIN-F1 implements.
+9. Wolpert, D. H. (1992). *Stacked Generalization.* Neural Networks, 5(2), 241–259, the stacking scheme PIN-F1 implements.
 10. Chen, T. & Guestrin, C. (2016). *XGBoost: A Scalable Tree Boosting System.* KDD 2016. [arXiv:1603.02754](https://arxiv.org/abs/1603.02754)
-11. Platt, J. (1999). *Probabilistic Outputs for Support Vector Machines and Comparisons to Regularized Likelihood Methods.* Advances in Large Margin Classifiers — the calibration method applied to the meta-learner output.
-12. Guo, C. et al. (2017). *On Calibration of Modern Neural Networks.* ICML 2017. [arXiv:1706.04599](https://arxiv.org/abs/1706.04599) — the source of Expected Calibration Error, the metric this project reports alongside ROC-AUC.
+11. Platt, J. (1999). *Probabilistic Outputs for Support Vector Machines and Comparisons to Regularized Likelihood Methods.* Advances in Large Margin Classifiers, the calibration method applied to the meta-learner output.
+12. Guo, C. et al. (2017). *On Calibration of Modern Neural Networks.* ICML 2017. [arXiv:1706.04599](https://arxiv.org/abs/1706.04599), the source of Expected Calibration Error, the metric this project reports alongside ROC-AUC.
 
 **Preprocessing and provenance**
 
-13. Bazarevsky, V. et al. (2019). *BlazeFace: Sub-Millisecond Neural Face Detection on Mobile GPUs.* [arXiv:1907.05047](https://arxiv.org/abs/1907.05047) — the detector behind PIN-A4.
-14. Coalition for Content Provenance and Authenticity (2024). *C2PA Technical Specification.* [c2pa.org](https://c2pa.org) — the standard PIN-A2 parses and validates.
+13. Bazarevsky, V. et al. (2019). *BlazeFace: Sub-Millisecond Neural Face Detection on Mobile GPUs.* [arXiv:1907.05047](https://arxiv.org/abs/1907.05047), the detector behind PIN-A4.
+14. Coalition for Content Provenance and Authenticity (2024). *C2PA Technical Specification.* [c2pa.org](https://c2pa.org), the standard PIN-A2 parses and validates.
 
 **Video temporal, for the deferred Layer 3**
 
-15. Chung, J. S. & Zisserman, A. (2016). *Out of Time: Automated Lip Sync in the Wild.* ACCV 2016 Workshops — the SyncNet approach specified for PIN-C2.
-16. Ciftci, U. A., Demir, I. & Yin, L. (2020). *FakeCatcher: Detection of Synthetic Portrait Videos Using Biological Signals.* IEEE TPAMI — the rPPG approach specified for PIN-C3.
+15. Chung, J. S. & Zisserman, A. (2016). *Out of Time: Automated Lip Sync in the Wild.* ACCV 2016 Workshops, the SyncNet approach specified for PIN-C2.
+16. Ciftci, U. A., Demir, I. & Yin, L. (2020). *FakeCatcher: Detection of Synthetic Portrait Videos Using Biological Signals.* IEEE TPAMI, the rPPG approach specified for PIN-C3.
 
 **Corpora**
 
 17. Rössler, A. et al. (2019). *FaceForensics++: Learning to Detect Manipulated Facial Images.* ICCV 2019. [arXiv:1901.08971](https://arxiv.org/abs/1901.08971)
 18. Yan, Z. et al. (2024). *DF40: Toward Next-Generation Deepfake Detection.* [arXiv:2406.13156](https://arxiv.org/abs/2406.13156)
-19. ComplexDataLab. *OpenFake.* Hugging Face. [huggingface.co/datasets/ComplexDataLab/OpenFake](https://huggingface.co/datasets/ComplexDataLab/OpenFake) — the corpus PIN-F1 is trained and cross-validated on.
-20. prithivMLmods. *AI-vs-Deepfake-vs-Real-Siglip2* and *OpenDeepfake-Preview.* Hugging Face — the pretrained PIN-B4 classifier and the corpus PIN-B1–B3 were trained on. Apache 2.0.
+19. ComplexDataLab. *OpenFake.* Hugging Face. [huggingface.co/datasets/ComplexDataLab/OpenFake](https://huggingface.co/datasets/ComplexDataLab/OpenFake), the corpus PIN-F1 is trained and cross-validated on.
+20. prithivMLmods. *AI-vs-Deepfake-vs-Real-Siglip2* and *OpenDeepfake-Preview.* Hugging Face, the pretrained PIN-B4 classifier and the corpus PIN-B1–B3 were trained on. Apache 2.0.

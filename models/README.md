@@ -15,7 +15,7 @@ because they exceed GitHub's 100 MB per-file limit.
 
 The Layer 6 artefact is small enough to track directly, so the ensemble
 stage works from a fresh clone with no download. It is stored as XGBoost
-JSON — a tree ensemble is a set of split rules rather than a weight
+JSON, a tree ensemble is a set of split rules rather than a weight
 matrix, so it serialises to readable text and is evaluated without the
 xgboost runtime (see `layer6_ensemble/booster_eval.py`).
 

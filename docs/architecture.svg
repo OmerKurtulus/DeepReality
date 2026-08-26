@@ -16,7 +16,7 @@
 
   <!-- ═══ Header ═══════════════════════════════════════════════════ -->
   <text x="80" y="72" fill="#141413" font-size="30" font-weight="600" letter-spacing="-0.4">DeepReality</text>
-  <text x="80" y="100" fill="#57544C" font-size="14.5" letter-spacing="0.1">PIN Architecture — a multi-layer forensic substrate for synthetic-media detection</text>
+  <text x="80" y="100" fill="#57544C" font-size="14.5" letter-spacing="0.1">PIN Architecture · a multi-layer forensic substrate for synthetic-media detection</text>
   <line x1="80" y1="122" x2="1560" y2="122" stroke="#141413" stroke-width="1.1"/>
 
   <text x="1560" y="72" text-anchor="end" fill="#141413" font-size="13" font-weight="600" letter-spacing="1.4">15 PINS · 6 LAYERS</text>
@@ -72,7 +72,7 @@
 
   <!-- ═══ LAYER 1 ══════════════════════════════════════════════════ -->
   <line x1="510" y1="243" x2="1130" y2="243" stroke="#141413" stroke-width="0.9"/>
-  <text x="510" y="262" fill="#141413" font-size="11.5" font-weight="700" letter-spacing="1.5">LAYER 1 — PREPROCESSING</text>
+  <text x="510" y="262" fill="#141413" font-size="11.5" font-weight="700" letter-spacing="1.5">LAYER 1 · PREPROCESSING</text>
   <text x="1130" y="262" text-anchor="end" fill="#8A867C" font-size="10.5" letter-spacing="0.9">CONCURRENT</text>
 
   <rect x="510" y="272" width="298" height="47" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.2"/>
@@ -93,7 +93,7 @@
 
   <!-- ═══ LAYER 2 ══════════════════════════════════════════════════ -->
   <line x1="510" y1="410" x2="1130" y2="410" stroke="#141413" stroke-width="0.9"/>
-  <text x="510" y="429" fill="#141413" font-size="11.5" font-weight="700" letter-spacing="1.5">LAYER 2 — DETECTION CORE</text>
+  <text x="510" y="429" fill="#141413" font-size="11.5" font-weight="700" letter-spacing="1.5">LAYER 2 · DETECTION CORE</text>
   <text x="1130" y="429" text-anchor="end" fill="#8A867C" font-size="10.5" letter-spacing="0.9">CONCURRENT</text>
 
   <rect x="510" y="439" width="298" height="47" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.2"/>
@@ -114,7 +114,7 @@
 
   <!-- ═══ LAYER 3 (in progress) ════════════════════════════════════ -->
   <line x1="510" y1="577" x2="1130" y2="577" stroke="#B3AEA0" stroke-width="0.9"/>
-  <text x="510" y="596" fill="#8A867C" font-size="11.5" font-weight="700" letter-spacing="1.5">LAYER 3 — VIDEO TEMPORAL</text>
+  <text x="510" y="596" fill="#8A867C" font-size="11.5" font-weight="700" letter-spacing="1.5">LAYER 3 · VIDEO TEMPORAL</text>
   <text x="1130" y="596" text-anchor="end" fill="#A9A498" font-size="10.5" letter-spacing="0.9">IN PROGRESS</text>
 
   <rect x="510" y="606" width="196" height="47" rx="5" fill="url(#hatch)" stroke="#B3AEA0" stroke-width="1.1" stroke-dasharray="4 2.5"/>
@@ -131,7 +131,7 @@
 
   <!-- ═══ LAYER 4 ══════════════════════════════════════════════════ -->
   <line x1="510" y1="686" x2="1130" y2="686" stroke="#141413" stroke-width="0.9"/>
-  <text x="510" y="705" fill="#141413" font-size="11.5" font-weight="700" letter-spacing="1.5">LAYER 4 — EXPLAINABILITY</text>
+  <text x="510" y="705" fill="#141413" font-size="11.5" font-weight="700" letter-spacing="1.5">LAYER 4 · EXPLAINABILITY</text>
   <text x="1130" y="705" text-anchor="end" fill="#8A867C" font-size="10.5" letter-spacing="0.9">DEPENDS ON B1–B3</text>
 
   <rect x="510" y="715" width="298" height="47" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.2"/>
@@ -144,7 +144,7 @@
 
   <!-- ═══ LAYER 5 ══════════════════════════════════════════════════ -->
   <line x1="510" y1="795" x2="1130" y2="795" stroke="#141413" stroke-width="0.9"/>
-  <text x="510" y="814" fill="#141413" font-size="11.5" font-weight="700" letter-spacing="1.5">LAYER 5 — ADJUDICATION</text>
+  <text x="510" y="814" fill="#141413" font-size="11.5" font-weight="700" letter-spacing="1.5">LAYER 5 · ADJUDICATION</text>
   <text x="1130" y="814" text-anchor="end" fill="#8A867C" font-size="10.5" letter-spacing="0.9">DEPENDS ON ALL</text>
 
   <rect x="510" y="824" width="620" height="47" rx="5" fill="#141413"/>
@@ -153,7 +153,7 @@
 
   <!-- ═══ LAYER 6 ══════════════════════════════════════════════════ -->
   <line x1="510" y1="904" x2="1130" y2="904" stroke="#141413" stroke-width="0.9"/>
-  <text x="510" y="923" fill="#141413" font-size="11.5" font-weight="700" letter-spacing="1.5">LAYER 6 — ENSEMBLE FUSION</text>
+  <text x="510" y="923" fill="#141413" font-size="11.5" font-weight="700" letter-spacing="1.5">LAYER 6 · ENSEMBLE FUSION</text>
   <text x="1130" y="923" text-anchor="end" fill="#8A867C" font-size="10.5" letter-spacing="0.9">CROSS-VALIDATES E1</text>
 
   <rect x="510" y="933" width="620" height="47" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.2"/>
@@ -162,7 +162,7 @@
 
   <!-- consensus node -->
   <rect x="510" y="1004" width="620" height="42" rx="5" fill="#E6E3D8" stroke="#141413" stroke-width="1.1"/>
-  <text x="820" y="1030" text-anchor="middle" fill="#141413" font-size="12" font-weight="600" letter-spacing="0.5">CONSENSUS — E1 and F1 cross-validated; divergence surfaced to the operator</text>
+  <text x="820" y="1030" text-anchor="middle" fill="#141413" font-size="12" font-weight="600" letter-spacing="0.5">CONSENSUS · E1 and F1 cross-validated; divergence surfaced to the operator</text>
 
   <!-- internal dependency flow -->
   <g stroke="#141413" stroke-width="1.2" fill="none" opacity="0.4">
@@ -199,7 +199,7 @@
     <text x="422" y="291" fill="#141413" font-size="13.5" font-weight="600">PIN-A1 · EXIF / Metadata Analysis</text>
     <text x="422" y="308" fill="#6E6B63" font-size="11.8">Generator signatures and capture telemetry;</text>
     <text x="422" y="323" fill="#6E6B63" font-size="11.8">presence of camera data is strong evidence,</text>
-    <text x="422" y="338" fill="#6E6B63" font-size="11.8">its absence is weak — the asymmetry is enforced</text>
+    <text x="422" y="338" fill="#6E6B63" font-size="11.8">its absence is weak, the asymmetry is enforced</text>
 
     <text x="422" y="372" fill="#141413" font-size="13.5" font-weight="600">PIN-A2 · C2PA Provenance</text>
     <text x="422" y="389" fill="#6E6B63" font-size="11.8">Cryptographically signed content credentials;</text>
@@ -208,16 +208,16 @@
 
     <text x="422" y="458" fill="#141413" font-size="13.5" font-weight="600">PIN-B1 · CLIP ViT-L/14</text>
     <text x="422" y="475" fill="#6E6B63" font-size="11.8">Frozen backbone, LayerNorm tuning (365 K of</text>
-    <text x="422" y="490" fill="#6E6B63" font-size="11.8">427 M parameters) — the generalisation</text>
+    <text x="422" y="490" fill="#6E6B63" font-size="11.8">427 M parameters), the generalisation</text>
     <text x="422" y="505" fill="#6E6B63" font-size="11.8">specialist; its dissent carries diagnostic weight</text>
 
     <text x="422" y="539" fill="#141413" font-size="13.5" font-weight="600">PIN-B2 · SigLIP2-base-512</text>
-    <text x="422" y="556" fill="#6E6B63" font-size="11.8">Full fine-tune at 512×512 — resolves</text>
+    <text x="422" y="556" fill="#6E6B63" font-size="11.8">Full fine-tune at 512×512, resolves</text>
     <text x="422" y="571" fill="#6E6B63" font-size="11.8">micro-anomalies below the sampling limit</text>
     <text x="422" y="586" fill="#6E6B63" font-size="11.8">of the other detectors</text>
 
     <text x="422" y="625" fill="#57544C" font-size="13.5" font-weight="600">PIN-C1 · Temporal Consistency</text>
-    <text x="422" y="642" fill="#8A867C" font-size="11.8">GRU over frame features — inter-frame</text>
+    <text x="422" y="642" fill="#8A867C" font-size="11.8">GRU over frame features, inter-frame</text>
     <text x="422" y="657" fill="#8A867C" font-size="11.8">discontinuity absent from genuine footage</text>
 
     <text x="422" y="734" fill="#141413" font-size="13.5" font-weight="600">PIN-D1 · Grad-CAM Heatmap</text>
@@ -242,12 +242,12 @@
     <text x="1218" y="404" fill="#6E6B63" font-size="11.8">which failure hypotheses are admissible</text>
 
     <text x="1218" y="458" fill="#141413" font-size="13.5" font-weight="600">PIN-B3 · Frequency Analysis</text>
-    <text x="1218" y="475" fill="#6E6B63" font-size="11.8">DCT/DWT + CNN — spectral traces of GAN and</text>
+    <text x="1218" y="475" fill="#6E6B63" font-size="11.8">DCT/DWT + CNN, spectral traces of GAN and</text>
     <text x="1218" y="490" fill="#6E6B63" font-size="11.8">diffusion pipelines that are invisible in pixel</text>
     <text x="1218" y="505" fill="#6E6B63" font-size="11.8">space; a genuinely disjoint domain</text>
 
     <text x="1218" y="539" fill="#141413" font-size="13.5" font-weight="600">PIN-B4 · Independent Core</text>
-    <text x="1218" y="556" fill="#6E6B63" font-size="11.8">Three-class taxonomy — separates wholly</text>
+    <text x="1218" y="556" fill="#6E6B63" font-size="11.8">Three-class taxonomy, separates wholly</text>
     <text x="1218" y="571" fill="#6E6B63" font-size="11.8">synthetic imagery from authentic content</text>
     <text x="1218" y="586" fill="#6E6B63" font-size="11.8">that was subsequently altered</text>
 
@@ -263,7 +263,7 @@
     <text x="1218" y="781" fill="#6E6B63" font-size="11.8">methods marks a corroborated region</text>
 
     <text x="1218" y="952" fill="#141413" font-size="13.5" font-weight="600">PIN-F1 · XGBoost Meta-Learner</text>
-    <text x="1218" y="969" fill="#6E6B63" font-size="11.8">Stacked fusion over the pin score vector —</text>
+    <text x="1218" y="969" fill="#6E6B63" font-size="11.8">Stacked fusion over the pin score vector,</text>
     <text x="1218" y="984" fill="#6E6B63" font-size="11.8">a calibrated numerical counterpart to the</text>
     <text x="1218" y="999" fill="#6E6B63" font-size="11.8">language model's qualitative adjudication</text>
   </g>
@@ -271,7 +271,7 @@
   <!-- ═══ Input / Output ═══════════════════════════════════════════ -->
   <rect x="80" y="190" width="300" height="54" rx="5" fill="#FFFFFF" stroke="#141413" stroke-width="1.3"/>
   <text x="96" y="212" fill="#141413" font-size="12" font-weight="700" letter-spacing="1.2">INPUT</text>
-  <text x="96" y="231" fill="#6E6B63" font-size="11.8">Image — JPEG · PNG · WebP · HEIC</text>
+  <text x="96" y="231" fill="#6E6B63" font-size="11.8">Image · JPEG · PNG · WebP · HEIC</text>
   <path d="M 384 217 L 464 217" stroke="#141413" stroke-width="1.2" fill="none" marker-end="url(#aDark)"/>
 
   <rect x="1260" y="190" width="300" height="54" rx="5" fill="#141413"/>
