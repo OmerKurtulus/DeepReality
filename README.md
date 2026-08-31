@@ -30,7 +30,9 @@ The sample is `input/sample_ai_generated.png`, which ships with the repository, 
 python3 main.py
 ```
 
-What the run demonstrates: PIN-A2 recovers a C2PA manifest declaring the image wholly synthetic and names the producing tool, the four detectors agree independently at a mean of 0.932, Grad-CAM shows where each of them looked, and Layer 5 decides on the producer's declaration rather than on detector consensus. Layer 6 reaches the same conclusion by a different method. The confidence is 0.88 rather than higher because the manifest's certificate had expired, and the system says so.
+What the run demonstrates: PIN-A2 recovers a C2PA manifest declaring the image wholly synthetic and names the producing tool, the four detectors agree independently at a mean of 0.932, Grad-CAM shows where each of them looked, and Layer 5 decides on the producer's declaration rather than on detector consensus. Layer 6 reaches the same conclusion by a different route and the two are recorded as concordant.
+
+The parts worth noticing are the ones that argue against the verdict. Confidence is held at 0.88 rather than higher because the manifest's signing certificate had expired. PIN-B4 returns `Deepfake` at 1.000 and is overruled, with the reason stated. Two failure modes are raised by the adjudicator against its own conclusion: the ELA anomalies sit on a lossless PNG where the premise of the analysis is weak, and three of the four detectors share a training corpus, so their unanimity is correlated rather than independent.
 
 ---
 
@@ -537,12 +539,14 @@ cp .env.example .env
 
 ```
 OPENROUTER_API_KEY=sk-or-v1-...
-DEEPREALITY_LLM_MODEL=google/gemma-4-26b-a4b-it:free
+DEEPREALITY_LLM_MODEL=anthropic/claude-sonnet-5
 ```
 
 The reasoning model is selected entirely from `.env`, any identifier from `openrouter.ai/models` works without a source change, and any OpenAI-compatible endpoint may be substituted through `DEEPREALITY_LLM_API_BASE`. Remaining defaults live in `config/settings.py` under `LLM_CONFIG`. Layers 1, 2, 4 and 6 operate offline and require no credential.
 
 Note that the reasoning protocol is demanding, strict JSON output and multi-step evidence weighting. Free-tier models produce usable but shallower adjudications; a frontier model is recommended for production analysis.
+
+One constraint applies to reasoning models specifically. Their internal deliberation is billed against the same token allowance as the visible answer, so a budget sized for the report alone is exhausted before a single character is emitted, and the provider returns an empty response. `LLM_CONFIG["max_tokens"]` is therefore set to 6000, comfortably above the roughly 1,500 tokens the report itself occupies. PIN-E1 names this setting explicitly if the ceiling is ever reached.
 
 ### 10.3 Running
 

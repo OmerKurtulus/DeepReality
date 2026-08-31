@@ -199,6 +199,20 @@ def complete(system_prompt: str, user_prompt: str) -> dict:
                 raise LLMError(f"Provider returned no choices: {body}")
 
             content = choices[0].get("message", {}).get("content", "")
+
+            # A reasoning model that runs out of budget mid-deliberation
+            # stops with finish_reason "length" before writing anything.
+            # Reporting that as an empty response hides the cause, so name
+            # the setting that has to change.
+            if not content and choices[0].get("finish_reason") == "length":
+                raise LLMError(
+                    "The model consumed the whole token allowance without "
+                    "emitting a response. This happens when a reasoning "
+                    "model deliberates past the limit. Raise "
+                    "LLM_CONFIG['max_tokens'] in config/settings.py "
+                    f"(currently {LLM_CONFIG['max_tokens']})."
+                )
+
             return {
                 "content": extract_json_object(content),
                 "usage": body.get("usage", {}),

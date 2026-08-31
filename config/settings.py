@@ -481,8 +481,15 @@ LLM_CONFIG = {
     # ── Request parameters ──
     # Temperature is kept low: forensic adjudication must be reproducible.
     "temperature": 0.15,
-    "max_tokens": 1600,
-    "timeout_seconds": 90,
+    # Reasoning models bill their internal deliberation against this
+    # budget before emitting a single visible character. At 1600 a model
+    # such as claude-sonnet-5 exhausts the allowance while still thinking
+    # and returns finish_reason="length" with empty content, which the
+    # client can only report as an empty response. The ceiling is set
+    # well above the ~1500 tokens the report itself needs so that both
+    # reasoning and non-reasoning models complete.
+    "max_tokens": 6000,
+    "timeout_seconds": 180,
     "max_retries": 2,
     "retry_backoff_seconds": 2.0,
 
