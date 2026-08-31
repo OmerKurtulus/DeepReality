@@ -21,8 +21,7 @@ xgboost runtime (see `layer6_ensemble/booster_eval.py`).
 
 ## Downloaded separately
 
-> **Hugging Face:** https://huggingface.co/USERNAME/deepreality-models
-> *(link to be updated once the upload is complete)*
+> **Hugging Face:** https://huggingface.co/OmerKurtulus/deepreality-models
 
 | File | Pin | Size | Description |
 |---|---|---|---|
